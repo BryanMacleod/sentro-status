@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr-CA">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>État des services Sentro</title>
+  <meta name="description" content="État en temps réel des services Sentro et historique de disponibilité.">
+  <meta name="theme-color" content="#4a5c1a">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 92 100'%3E%3Cpath d='M46 4 4 16v36c0 24 20 38 42 46 22-8 42-22 42-46V16Z' fill='%234a5c1a'/%3E%3Ctext x='46' y='68' font-family='Arial,sans-serif' font-size='52' font-weight='700' fill='%23fff' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="entete">
+    <div class="conteneur entete-contenu">
+      <a class="marque" href="https://groupesentro.ca" aria-label="Sentro">
+        <svg class="bouclier" viewBox="0 0 92 100" aria-hidden="true">
+          <path d="M46 4 4 16v36c0 24 20 38 42 46 22-8 42-22 42-46V16Z" fill="currentColor"/>
+          <text x="46" y="68" font-family="Inter, Arial, sans-serif" font-size="52" font-weight="700" fill="var(--fond-carte)" text-anchor="middle">S</text>
+        </svg>
+        <span>Sentro</span>
+      </a>
+      <span class="sous-titre">État des services</span>
+    </div>
+  </header>
+
+  <main class="conteneur">
+    <section id="global" class="global global--inconnu" aria-live="polite">
+      <span class="pastille" aria-hidden="true"></span>
+      <div>
+        <p id="global-titre" class="global-titre">Chargement…</p>
+        <p id="global-maj" class="global-maj"></p>
+      </div>
+    </section>
+
+    <section id="incidents-en-cours" class="incidents" hidden></section>
+
+    <section class="carte">
+      <div class="carte-entete">
+        <h2>Services</h2>
+        <p id="legende" class="legende"><span class="periode-longue">90 derniers jours</span><span class="periode-courte">30 derniers jours</span></p>
+      </div>
+      <ul id="composants" class="composants"></ul>
+    </section>
+
+    <section class="carte" id="bloc-recents" hidden>
+      <div class="carte-entete"><h2>Incidents récents</h2></div>
+      <ul id="incidents-recents" class="recents"></ul>
+    </section>
+  </main>
+
+  <footer class="conteneur pied">
+    <span>Vérifié toutes les 5 minutes depuis l'extérieur de nos serveurs.</span>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
