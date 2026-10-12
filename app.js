@@ -166,7 +166,7 @@ function afficherGlobal(etat) {
 async function afficherIncidents() {
   let issues;
   try {
-    const r = await fetch(`https://api.github.com/repos/${DEPOT}/issues?state=all&per_page=40&sort=created&direction=desc`, { headers: { Accept: 'application/vnd.github+json' } });
+    const r = await fetch(`https://api.github.com/repos/${DEPOT}/issues?state=all&per_page=40&sort=created&direction=desc`, { cache: 'no-cache', headers: { Accept: 'application/vnd.github+json' } });
     if (!r.ok) return;
     issues = (await r.json()).filter(i => !i.pull_request);
   } catch { return; }
@@ -180,7 +180,7 @@ async function afficherIncidents() {
     let suivis = [];
     if (i.comments > 0) {
       try {
-        const r = await fetch(i.comments_url, { headers: { Accept: 'application/vnd.github+json' } });
+        const r = await fetch(i.comments_url, { cache: 'no-cache', headers: { Accept: 'application/vnd.github+json' } });
         if (r.ok) suivis = (await r.json()).reverse();
       } catch {}
     }
@@ -236,4 +236,4 @@ rafraichir();
 afficherIncidents();
 setInterval(rafraichir, 30000);
 setInterval(majHeure, 15000);
-setInterval(afficherIncidents, 5 * 60000);
+setInterval(afficherIncidents, 60000);
