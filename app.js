@@ -127,11 +127,26 @@ function afficherServices(etat, historique) {
   }).join('');
 }
 
+let derniereVerif = null;
+
+function majHeure() {
+  $('global-maj').textContent = derniereVerif ? `Dernière vérification ${ilYa(derniereVerif)}` : '';
+}
+
 function afficherGlobal(etat) {
   const g = etat?.global ?? 'inconnu';
   $('global').className = `global global--${g}`;
   $('global-titre').textContent = GLOBAL[g] ?? GLOBAL.inconnu;
-  $('global-maj').textContent = etat?.verifieA ? `Dernière vérification ${ilYa(etat.verifieA)}` : '';
+  const verif = etat?.verifieA ?? null;
+  const nouvelle = derniereVerif !== null && verif !== null && verif !== derniereVerif;
+  derniereVerif = verif;
+  majHeure();
+  if (nouvelle) {
+    const el = $('global-maj');
+    el.classList.remove('vient-de-changer');
+    void el.offsetWidth;
+    el.classList.add('vient-de-changer');
+  }
 }
 
 async function afficherIncidents() {
@@ -205,5 +220,6 @@ document.addEventListener('scroll', () => { bulle.hidden = true; }, { passive: t
 
 rafraichir();
 afficherIncidents();
-setInterval(rafraichir, 60000);
+setInterval(rafraichir, 30000);
+setInterval(majHeure, 15000);
 setInterval(afficherIncidents, 5 * 60000);

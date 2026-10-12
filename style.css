@@ -5,7 +5,7 @@
   --texte-2: #4b5244;
   --texte-3: #7a8172;
   --bordure: #e3e6de;
-  --accent: #4a5c1a;
+  --accent: #111111;
   --vert: #3f9b4b;
   --vert-doux: #e6f4e8;
   --jaune: #d99a1b;
@@ -26,7 +26,7 @@
     --texte-2: #c3c8bb;
     --texte-3: #8d9485;
     --bordure: #2c3127;
-    --accent: #a9c06a;
+    --accent: #f2f2f2;
     --vert: #4fbf5f;
     --vert-doux: rgba(79, 191, 95, 0.14);
     --jaune: #e7b03d;
@@ -64,11 +64,17 @@ body {
 main.conteneur { padding-top: 28px; padding-bottom: 8px; display: grid; gap: 20px; }
 
 .global { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-radius: 14px; border: 1px solid transparent; }
-.global .pastille { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; background: var(--texte-3); }
+.global .pastille { position: relative; width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; background: var(--texte-3); }
+.global .pastille::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; opacity: 0; }
+.global--operationnel .pastille::after, .global--degrade .pastille::after, .global--panne .pastille::after { animation: pouls 2s ease-out infinite; }
+.global-maj.vient-de-changer { animation: eclat 1.2s ease-out; }
+@keyframes pouls { 0% { transform: scale(1); opacity: 0.55; } 100% { transform: scale(2.8); opacity: 0; } }
+@keyframes eclat { 0% { color: var(--texte); } 100% { color: var(--texte-2); } }
+@media (prefers-reduced-motion: reduce) { .global .pastille::after, .global-maj.vient-de-changer { animation: none; } }
 .global-titre { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
 .global-maj { margin: 2px 0 0; font-size: 13px; color: var(--texte-2); }
 .global--operationnel { background: var(--vert-doux); border-color: color-mix(in srgb, var(--vert) 30%, transparent); }
-.global--operationnel .pastille { background: var(--vert); box-shadow: 0 0 0 4px color-mix(in srgb, var(--vert) 22%, transparent); }
+.global--operationnel .pastille { background: var(--vert); }
 .global--degrade { background: var(--jaune-doux); border-color: color-mix(in srgb, var(--jaune) 35%, transparent); }
 .global--degrade .pastille { background: var(--jaune); }
 .global--panne { background: var(--rouge-doux); border-color: color-mix(in srgb, var(--rouge) 35%, transparent); }
