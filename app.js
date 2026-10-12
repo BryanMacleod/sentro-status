@@ -1,5 +1,6 @@
 const DEPOT = 'BryanMacleod/sentro-status';
 const DONNEES = `https://raw.githubusercontent.com/${DEPOT}/donnees`;
+const CONTENU = `https://api.github.com/repos/${DEPOT}/contents`;
 const JOURS = 90;
 const FUSEAU = 'America/Toronto';
 
@@ -57,7 +58,7 @@ function quand(iso) {
 }
 
 function ilYa(iso) {
-  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
   if (min < 1) return "à l'instant";
   if (min < 60) return `il y a ${min} min`;
   const h = Math.floor(min / 60);
@@ -86,6 +87,14 @@ function etatJour(c) {
 
 function pourcent(x) {
   return `${(Math.floor(x * 10000) / 100).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
+}
+
+async function lireDonnee(nom) {
+  try {
+    const r = await fetch(`${CONTENU}/${nom}?ref=donnees`, { cache: 'no-cache', headers: { Accept: 'application/vnd.github.raw+json' } });
+    if (r.ok) return await r.json();
+  } catch {}
+  return lireJson(`${DONNEES}/${nom}`);
 }
 
 async function lireJson(url) {
@@ -191,7 +200,7 @@ async function afficherIncidents() {
 
 async function rafraichir() {
   try {
-    const [etat, historique] = await Promise.all([lireJson(`${DONNEES}/etat.json`), lireJson(`${DONNEES}/historique.json`)]);
+    const [etat, historique] = await Promise.all([lireDonnee('etat.json'), lireDonnee('historique.json')]);
     afficherGlobal(etat);
     afficherServices(etat, historique);
   } catch {
