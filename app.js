@@ -20,6 +20,7 @@ const LIBELLES = {
   degrade: 'Perturbé',
   panne: 'En panne',
   inconnu: 'En attente',
+  maintenance: 'Maintenance',
 };
 
 const GLOBAL = {
@@ -27,6 +28,7 @@ const GLOBAL = {
   degrade: 'Perturbation en cours',
   panne: 'Panne en cours',
   inconnu: 'État indisponible',
+  maintenance: 'Maintenance en cours',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -77,12 +79,14 @@ function derniersJours() {
 }
 
 function etatJour(c) {
-  if (!c) return { classe: '', dispo: null, panneMin: 0 };
+  if (!c) return { classe: '', dispo: null, panneMin: 0, maintenanceMin: 0 };
   const total = (c.operationnel ?? 0) + (c.degrade ?? 0) + (c.panne ?? 0);
-  if (total === 0) return { classe: '', dispo: null, panneMin: 0 };
+  if (total === 0) return (c.maintenance ?? 0) > 0
+    ? { classe: 'maintenance', dispo: null, panneMin: 0, maintenanceMin: c.maintenance * 5 }
+    : { classe: '', dispo: null, panneMin: 0, maintenanceMin: 0 };
   const ratio = (c.panne ?? 0) / total;
-  const classe = ratio >= 0.05 ? 'panne' : (c.panne ?? 0) > 0 || (c.degrade ?? 0) > 0 ? 'degrade' : 'operationnel';
-  return { classe, dispo: 1 - ratio, panneMin: (c.panne ?? 0) * 5 };
+  const classe = ratio >= 0.05 ? 'panne' : (c.panne ?? 0) > 0 || (c.degrade ?? 0) > 0 ? 'degrade' : (c.maintenance ?? 0) > 0 ? 'maintenance' : 'operationnel';
+  return { classe, dispo: 1 - ratio, panneMin: (c.panne ?? 0) * 5, maintenanceMin: (c.maintenance ?? 0) * 5 };
 }
 
 function pourcent(x) {
@@ -123,9 +127,10 @@ function afficherServices(etat, historique) {
         const t = (c.operationnel ?? 0) + (c.degrade ?? 0) + (c.panne ?? 0);
         for (const p of recent ? [long, court] : [long]) { p.total += t; p.ok += t - (c.panne ?? 0); }
       }
+      const maint = e.maintenanceMin ? ` · maintenance environ ${e.maintenanceMin} min` : '';
       const info = e.dispo === null
-        ? `${dateLisible(j)} · ${premier && j < premier ? 'Pas encore surveillé' : 'Aucune donnée'}`
-        : `${dateLisible(j)} · ${pourcent(e.dispo)} disponible${e.panneMin ? ` · environ ${e.panneMin} min de panne` : ''}`;
+        ? `${dateLisible(j)} · ${e.maintenanceMin ? `Maintenance environ ${e.maintenanceMin} min` : premier && j < premier ? 'Pas encore surveillé' : 'Aucune donnée'}`
+        : `${dateLisible(j)} · ${pourcent(e.dispo)} disponible${e.panneMin ? ` · environ ${e.panneMin} min de panne` : ''}${maint}`;
       return `<span class="barre${e.classe ? ` barre--${e.classe}` : ''}${recent ? '' : ' barre--ancienne'}" tabindex="0" data-info="${echapper(info)}"></span>`;
     }).join('');
     return `<li class="composant">
