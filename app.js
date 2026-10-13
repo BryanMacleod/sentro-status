@@ -108,12 +108,14 @@ async function lireJson(url) {
 }
 
 function afficherServices(etat, historique) {
-  const periode = derniersJours();
-  const debutCourt = periode[periode.length - 30];
+  const tous = derniersJours();
+  const debutCourt = tous[tous.length - 30];
   const premier = Object.keys(historique?.jours ?? {}).sort()[0];
-  const depuisLong = premier && premier > periode[0] ? premier : null;
+  const depuisLong = premier && premier > tous[0] ? premier : null;
   const depuisCourt = premier && premier > debutCourt ? premier : null;
+  const periode = depuisLong ? tous.filter(j => j >= depuisLong) : tous;
   const libelle = (depuis, plein) => depuis ? `Surveillé depuis le ${dateCourte(depuis)}` : plein;
+  const debutPied = (depuis, plein) => depuis ? `Depuis le ${dateCourte(depuis)}` : plein;
   $('legende').innerHTML = `<span class="periode-longue">${libelle(depuisLong, `${JOURS} derniers jours`)}</span><span class="periode-courte">${libelle(depuisCourt, '30 derniers jours')}</span>`;
 
   $('composants').innerHTML = COMPOSANTS.map(({ id, nom }) => {
@@ -136,7 +138,7 @@ function afficherServices(etat, historique) {
     return `<li class="composant">
       <div class="composant-ligne"><span class="composant-nom">${echapper(nom)}</span><span class="statut statut--${statut}">${LIBELLES[statut] ?? statut}</span></div>
       <div class="barres" aria-label="Disponibilité de ${echapper(nom)} par jour">${barres}</div>
-      <div class="composant-pied"><span><span class="periode-longue">Il y a ${JOURS} jours</span><span class="periode-courte">Il y a 30 jours</span></span><span class="dispo"><span class="periode-longue">${long.total ? `${pourcent(long.ok / long.total)} disponible` : ''}</span><span class="periode-courte">${court.total ? `${pourcent(court.ok / court.total)} disponible` : ''}</span></span><span>Aujourd'hui</span></div>
+      <div class="composant-pied"><span><span class="periode-longue">${debutPied(depuisLong, `Il y a ${JOURS} jours`)}</span><span class="periode-courte">${debutPied(depuisCourt, 'Il y a 30 jours')}</span></span><span class="dispo"><span class="periode-longue">${long.total ? `${pourcent(long.ok / long.total)} disponible` : ''}</span><span class="periode-courte">${court.total ? `${pourcent(court.ok / court.total)} disponible` : ''}</span></span><span>Aujourd'hui</span></div>
     </li>`;
   }).join('');
 }
