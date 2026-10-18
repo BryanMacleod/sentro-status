@@ -18,7 +18,9 @@ export const COMPOSANTS = [
   { id: 'taches', nom: 'Tâches planifiées' },
 ];
 const INTERNES = ['base', 'courriels', 'notifications', 'stockage', 'sauvegardes', 'taches'];
-const SEUIL_ALERTE = { portail: 1, connexion: 1 };
+// Alerte (texto + incident) apres deux verifications en panne de suite :
+// une coupure de quelques secondes vue une seule fois ne merite pas d'alerte.
+const SEUIL_ALERTE = {};
 const SEUIL_DEFAUT = 2;
 
 const pause = (ms) => new Promise(r => setTimeout(r, ms));
@@ -186,7 +188,17 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
   historique.jours[jour] ??= {};
   for (const { id } of COMPOSANTS) {
     const c = (historique.jours[jour][id] ??= { operationnel: 0, degrade: 0, panne: 0, inconnu: 0 });
-    c[etat.composants[id].statut] = (c[etat.composants[id].statut] ?? 0) + 1;
+    const { statut, pannesConsecutives } = etat.composants[id];
+    if (statut === 'panne' && pannesConsecutives < SEUIL_DEFAUT) {
+      // Panne vue une seule fois : neutre tant qu'elle n'est pas confirmee.
+      c.inconnu = (c.inconnu ?? 0) + 1;
+    } else if (statut === 'panne' && pannesConsecutives === SEUIL_DEFAUT && (c.inconnu ?? 0) > 0) {
+      // Confirmee : la verification precedente compte aussi comme panne.
+      c.inconnu -= 1;
+      c.panne = (c.panne ?? 0) + 2;
+    } else {
+      c[statut] = (c[statut] ?? 0) + 1;
+    }
   }
   const jours = Object.keys(historique.jours).sort();
   for (const j of jours.slice(0, Math.max(0, jours.length - JOURS_GARDES))) delete historique.jours[j];
