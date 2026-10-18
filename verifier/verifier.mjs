@@ -32,19 +32,25 @@ async function appeler(chemin, { json = false, delai = 15000 } = {}) {
       headers: { 'User-Agent': 'SentroStatus/1.0 (+status.groupesentro.ca)', Accept: json ? 'application/json' : 'text/html' },
     });
     const latenceMs = Date.now() - debut;
-    if (!r.ok) return { ok: false, latenceMs };
+    if (!r.ok) return { ok: false, latenceMs, cause: `HTTP ${r.status}` };
     return { ok: true, latenceMs, corps: json ? await r.json().catch(() => null) : null };
-  } catch {
-    return { ok: false, latenceMs: Date.now() - debut };
+  } catch (e) {
+    const latenceMs = Date.now() - debut;
+    return { ok: false, latenceMs, cause: e?.name === 'TimeoutError' ? 'délai dépassé' : 'réseau' };
   }
 }
+
+// Cause d'un echec, pour le texto et le journal de la verification (jamais
+// dans l'issue : elle est publique sur la page d'etat).
+const cause = (r) => (r.ok ? null : `${r.cause ?? 'réponse invalide'} en ${Math.round(r.latenceMs / 100) / 10} s`);
 
 async function verifierExterne() {
   const portail = await appeler('/connexion');
   const connexion = await appeler('/api/auth/csrf', { json: true });
+  const connexionOk = connexion.ok && connexion.corps?.csrfToken;
   return {
-    portail: { statut: !portail.ok ? 'panne' : portail.latenceMs > 5000 ? 'degrade' : 'operationnel', latenceMs: portail.latenceMs },
-    connexion: { statut: connexion.ok && connexion.corps?.csrfToken ? 'operationnel' : 'panne' },
+    portail: { statut: !portail.ok ? 'panne' : portail.latenceMs > 5000 ? 'degrade' : 'operationnel', latenceMs: portail.latenceMs, cause: cause(portail) },
+    connexion: { statut: connexionOk ? 'operationnel' : 'panne', cause: connexionOk ? null : (cause(connexion) ?? 'jeton absent') },
   };
 }
 
@@ -52,10 +58,13 @@ export async function verifier() {
   if (!URL_SENTRO) throw new Error('SENTRO_URL manquant');
   let externe = await verifierExterne();
   if (externe.portail.statut === 'panne' || externe.connexion.statut === 'panne') {
+    console.log(`Premier essai : portail=${externe.portail.cause ?? 'ok'} connexion=${externe.connexion.cause ?? 'ok'}`);
     await pause(30000);
     externe = await verifierExterne();
+    console.log(`Second essai : portail=${externe.portail.cause ?? 'ok'} connexion=${externe.connexion.cause ?? 'ok'}`);
   }
   const statut = await appeler('/api/statut', { json: true, delai: 20000 });
+  if (!statut.ok) console.log(`/api/statut : ${cause(statut)}`);
   const internes = {};
   for (const id of INTERNES) {
     const s = statut.ok ? statut.corps?.composants?.[id]?.statut : null;
@@ -185,7 +194,8 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
   const enAlerte = COMPOSANTS.filter(c => etat.composants[c.id].alerte).map(c => c.id);
   if (enPanne.length > 0) {
     const noms = enPanne.map(nomDe).join(', ');
-    await texto(`Sentro : PANNE ${noms} (${heureQuebec(maintenant)}). status.groupesentro.ca`);
+    const details = enPanne.map(id => `${nomDe(id)}${resultats[id]?.cause ? ` (${resultats[id].cause})` : ''}`).join(', ');
+    await texto(`Sentro : PANNE ${details} à ${heureQuebec(maintenant)}. status.groupesentro.ca`);
     if (!etat.incident) {
       const issue = await github('/issues', {
         method: 'POST',
