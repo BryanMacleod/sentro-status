@@ -247,6 +247,36 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
   return etat;
 }
 
+// Incidents et leurs messages, publies avec les autres donnees de la page :
+// les visiteurs ne lisent plus l'API de GitHub (60 lectures par heure et par
+// adresse, au-dela la section des incidents disparaissait). Lu avec le jeton
+// de la verification ; en cas d'echec, le fichier precedent est garde.
+async function publierIncidents(maintenant = new Date()) {
+  const issues = await github('/issues?state=all&per_page=100&sort=created&direction=desc');
+  if (!Array.isArray(issues)) return;
+  const quatreVingtDixJours = maintenant.getTime() - 90 * 86400000;
+  const gardees = issues
+    .filter(i => !i.pull_request && i.labels.some(l => l.name === 'incident' || l.name === 'maintenance'))
+    .filter(i => i.state === 'open' || new Date(i.closed_at ?? i.created_at).getTime() > quatreVingtDixJours);
+  const commentaires = {};
+  for (const i of gardees) {
+    if (!(i.comments > 0)) continue;
+    const c = await github(`/issues/${i.number}/comments?per_page=100`);
+    if (!Array.isArray(c)) return;
+    commentaires[i.number] = c.map(x => ({ created_at: x.created_at, body: x.body ?? '' }));
+  }
+  const donnees = {
+    a: maintenant.toISOString(),
+    issues: gardees.map(i => ({
+      number: i.number, title: i.title, body: i.body ?? '', state: i.state,
+      labels: i.labels.map(l => ({ name: l.name })), comments: i.comments ?? 0,
+      created_at: i.created_at, closed_at: i.closed_at, updated_at: i.updated_at,
+    })),
+    commentaires,
+  };
+  await writeFile(join(DOSSIER, 'incidents.json'), JSON.stringify(donnees));
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const existantes = new Set(((await github('/labels?per_page=100')) ?? []).map(l => l.name));
   for (const [name, color, description] of [
@@ -259,4 +289,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const ouvertes = (await github('/issues?state=open&labels=maintenance&per_page=20')) ?? [];
   const resultats = await verifier();
   await executer(resultats, new Date(), { maintenance: maintenanceActive(ouvertes) });
+  // Apres la verification : un incident ouvert ou ferme a l'instant y figure.
+  await publierIncidents();
 }
