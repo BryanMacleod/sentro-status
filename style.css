@@ -142,3 +142,6 @@ main.conteneur { padding-top: 28px; padding-bottom: 8px; display: grid; gap: 20p
   .composant, .carte-entete, .recents li { padding-left: 16px; padding-right: 16px; }
   .sous-titre { font-size: 13px; }
 }
+/* Mise a jour d'un incident resolu (explication, correctifs) : epinglee 7 jours. */
+.incident--resolu { border-left-color: var(--vert); }
+.incident--resolu .incident-etiquette { color: var(--vert); }
