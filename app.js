@@ -3,6 +3,8 @@ const DONNEES = `https://raw.githubusercontent.com/${DEPOT}/donnees`;
 const CONTENU = `https://api.github.com/repos/${DEPOT}/contents`;
 const JOURS = 90;
 const FUSEAU = 'America/Toronto';
+// Perturbation minimale (minutes) pour colorer une journee en jaune.
+const PERTURBATION_MIN = 15;
 
 const COMPOSANTS = [
   { id: 'portail', nom: 'Portail web' },
@@ -48,13 +50,6 @@ function dateLisible(jour) {
   const [a, m, j] = jour.split('-').map(Number);
   return new Intl.DateTimeFormat('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(a, m - 1, j)));
 }
-function dateCourte(jour) {
-  const [a, m, j] = jour.split('-').map(Number);
-  const autreAnnee = a !== Number(jourQuebec(new Date()).slice(0, 4));
-  const texte = new Intl.DateTimeFormat('fr-CA', { day: 'numeric', month: 'long', ...(autreAnnee ? { year: 'numeric' } : {}), timeZone: 'UTC' }).format(new Date(Date.UTC(a, m - 1, j)));
-  return j === 1 ? texte.replace(/^1 /, '1er ') : texte;
-}
-
 function quand(iso) {
   return new Intl.DateTimeFormat('fr-CA', { timeZone: FUSEAU, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
 }
@@ -85,8 +80,14 @@ function etatJour(c) {
     ? { classe: 'maintenance', dispo: null, panneMin: 0, maintenanceMin: c.maintenance * 5 }
     : { classe: '', dispo: null, panneMin: 0, maintenanceMin: 0 };
   const ratio = (c.panne ?? 0) / total;
-  const classe = ratio >= 0.05 ? 'panne' : (c.panne ?? 0) > 0 || (c.degrade ?? 0) > 0 ? 'degrade' : (c.maintenance ?? 0) > 0 ? 'maintenance' : 'operationnel';
-  return { classe, dispo: 1 - ratio, panneMin: (c.panne ?? 0) * 5, maintenanceMin: (c.maintenance ?? 0) * 5 };
+  // Une verification lente isolee (5 min « perturbe ») ne colore plus la
+  // journee : le jaune demande de la panne (dispo sous 100 %) ou au moins
+  // 15 min de perturbation, sinon la barre jaune contredisait le 100 %.
+  const perturbeMin = (c.degrade ?? 0) * 5;
+  const classe = ratio >= 0.05 ? 'panne'
+    : (c.panne ?? 0) > 0 || perturbeMin >= PERTURBATION_MIN ? 'degrade'
+    : (c.maintenance ?? 0) > 0 ? 'maintenance' : 'operationnel';
+  return { classe, dispo: 1 - ratio, panneMin: (c.panne ?? 0) * 5, maintenanceMin: (c.maintenance ?? 0) * 5, perturbeMin: perturbeMin >= PERTURBATION_MIN ? perturbeMin : 0 };
 }
 
 function pourcent(x) {
@@ -114,8 +115,11 @@ function afficherServices(etat, historique) {
   const depuisLong = premier && premier > tous[0] ? premier : null;
   const depuisCourt = premier && premier > debutCourt ? premier : null;
   const periode = depuisLong ? tous.filter(j => j >= depuisLong) : tous;
-  const libelle = (depuis, plein) => depuis ? `Surveillé depuis le ${dateCourte(depuis)}` : plein;
-  const debutPied = (depuis, plein) => depuis ? `Depuis le ${dateCourte(depuis)}` : plein;
+  // Nombre de jours surveilles, de la premiere journee a aujourd'hui inclus.
+  const nbJours = depuis => tous.length - tous.indexOf(depuis);
+  const jours = n => (n === 1 ? '1 jour' : `${n} jours`);
+  const libelle = (depuis, plein) => depuis ? `Surveillé depuis ${jours(nbJours(depuis))}` : plein;
+  const debutPied = (depuis, plein) => depuis ? `Il y a ${jours(nbJours(depuis))}` : plein;
   $('legende').innerHTML = `<span class="periode-longue">${libelle(depuisLong, `${JOURS} derniers jours`)}</span><span class="periode-courte">${libelle(depuisCourt, '30 derniers jours')}</span>`;
 
   $('composants').innerHTML = COMPOSANTS.map(({ id, nom }) => {
@@ -132,7 +136,7 @@ function afficherServices(etat, historique) {
       const maint = e.maintenanceMin ? ` · maintenance environ ${e.maintenanceMin} min` : '';
       const info = e.dispo === null
         ? `${dateLisible(j)} · ${e.maintenanceMin ? `Maintenance environ ${e.maintenanceMin} min` : premier && j < premier ? 'Pas encore surveillé' : 'Aucune donnée'}`
-        : `${dateLisible(j)} · ${pourcent(e.dispo)} disponible${e.panneMin ? ` · environ ${e.panneMin} min de panne` : ''}${maint}`;
+        : `${dateLisible(j)} · ${pourcent(e.dispo)} disponible${e.panneMin ? ` · environ ${e.panneMin} min de panne` : ''}${e.perturbeMin ? ` · perturbé environ ${e.perturbeMin} min` : ''}${maint}`;
       return `<span class="barre${e.classe ? ` barre--${e.classe}` : ''}${recent ? '' : ' barre--ancienne'}" tabindex="0" data-info="${echapper(info)}"></span>`;
     }).join('');
     return `<li class="composant">
