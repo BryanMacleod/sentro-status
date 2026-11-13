@@ -14,6 +14,7 @@ const COMPOSANTS = [
   { id: 'notifications', nom: 'Notifications' },
   { id: 'stockage', nom: 'Stockage des fichiers' },
   { id: 'sauvegardes', nom: 'Sauvegardes' },
+  { id: 'restauration', nom: 'Test de restauration' },
   { id: 'taches', nom: 'Tâches planifiées' },
 ];
 

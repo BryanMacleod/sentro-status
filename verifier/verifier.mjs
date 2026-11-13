@@ -15,9 +15,10 @@ export const COMPOSANTS = [
   { id: 'notifications', nom: 'Notifications' },
   { id: 'stockage', nom: 'Stockage des fichiers' },
   { id: 'sauvegardes', nom: 'Sauvegardes' },
+  { id: 'restauration', nom: 'Test de restauration' },
   { id: 'taches', nom: 'Tâches planifiées' },
 ];
-const INTERNES = ['base', 'courriels', 'notifications', 'stockage', 'sauvegardes', 'taches'];
+const INTERNES = ['base', 'courriels', 'notifications', 'stockage', 'sauvegardes', 'restauration', 'taches'];
 // Alerte (texto + incident) apres deux verifications en panne de suite :
 // une coupure de quelques secondes vue une seule fois ne merite pas d'alerte.
 const SEUIL_ALERTE = {};
