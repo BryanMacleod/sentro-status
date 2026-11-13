@@ -188,15 +188,17 @@ function sansSignature(texte) {
 }
 
 async function chargerIncidents() {
-  const issues = (await lireGitHub(`https://api.github.com/repos/${DEPOT}/issues?state=all&per_page=40&sort=created&direction=desc`)).filter(i => !i.pull_request);
+  const issues = (await lireGitHub(`https://api.github.com/repos/${DEPOT}/issues?state=all&per_page=100&sort=created&direction=desc`)).filter(i => !i.pull_request);
   const genre = (i) => i.labels.some(l => l.name === 'maintenance') ? 'maintenance' : i.labels.some(l => l.name === 'incident') ? 'incident' : null;
   const avecSuivis = async i => {
     if (!(i.comments > 0)) return [];
     try { return (await lireGitHub(i.comments_url)).reverse(); } catch { return []; }
   };
-  const quinzeJours = Date.now() - 15 * 86400000;
+  // Un incident reste dans « Incidents recents » tant que sa journee est dans
+  // le graphique : 90 jours sur ordinateur, 30 sur telephone (voir afficherIncidents).
+  const visibles = Date.now() - JOURS * 86400000;
   const ouverts = issues.filter(i => i.state === 'open' && genre(i));
-  const fermes = issues.filter(i => i.state === 'closed' && genre(i) === 'incident' && new Date(i.closed_at).getTime() > quinzeJours);
+  const fermes = issues.filter(i => i.state === 'closed' && genre(i) === 'incident' && new Date(i.closed_at).getTime() > visibles);
   // Mise a jour publiee sur un incident ferme (explication, correctifs) :
   // affichee en haut de la page pendant 7 jours apres sa publication.
   const aSuivre = fermes.filter(i => i.comments > 0 && new Date(i.updated_at).getTime() > Date.now() - SEPT_JOURS);
@@ -241,7 +243,8 @@ async function afficherIncidents() {
   $('incidents-en-cours').innerHTML = blocs.join('');
   $('incidents-en-cours').hidden = blocs.length === 0;
 
-  $('incidents-recents').innerHTML = donnees.recents.map(i => `<li>
+  const trenteJours = Date.now() - 30 * 86400000;
+  $('incidents-recents').innerHTML = donnees.recents.map(i => `<li${new Date(i.creeA).getTime() < trenteJours ? ' class="incident--ancien"' : ''}>
     <span class="titre">${texteIssue(i.titre)}</span>
     <span class="quand">${quand(i.creeA)} · résolu en ${duree(i.creeA, i.fermeA)}</span>
   </li>`).join('');

@@ -136,6 +136,8 @@ main.conteneur { padding-top: 28px; padding-bottom: 8px; display: grid; gap: 20p
 
 @media (max-width: 640px) {
   .barre--ancienne { display: none; }
+  /* Telephone : 30 jours de barres, donc les incidents plus vieux sont caches aussi. */
+  .recents .incident--ancien { display: none; }
   .periode-longue { display: none; }
   .periode-courte { display: inline; }
   .global-titre { font-size: 16px; }
