@@ -310,7 +310,7 @@ const DUREE_GROUPE_CORRIGEE = { 19: '24 min' };
 const COMMENTAIRES_CORRIGES = {
   '2026-11-12T20:05:23Z': t => t.replace('Durée de la panne : 3 min.', 'Durée de la panne : 24 min au total, avec la coupure de 15 h 11.'),
   '2026-11-12T20:30:32Z': t => t.replace('Durée de la panne : 14 min.', 'Durée de la panne : 24 min.'),
-  '2026-11-13T15:14:08Z': t => t.replace('à 15 h 01 et à 15 h 16, pendant environ 20 minutes au total', 'à 15 h 00 et à 15 h 11, pendant 24 minutes au total'),
+  '2026-11-13T15:14:08Z': t => t.replace('inaccessible deux fois, à 15 h 01 et à 15 h 16, pendant environ 20 minutes au total', 'inaccessible pendant 24 minutes'),
 };
 function texteCommentaire(c) {
   const corriger = COMMENTAIRES_CORRIGES[c.created_at];
