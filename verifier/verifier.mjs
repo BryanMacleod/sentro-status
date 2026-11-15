@@ -156,11 +156,34 @@ export function maintenanceActive(issues, maintenant = new Date()) {
   });
 }
 
+function ajouterCoupure(historique, id, debut, fin) {
+  historique.coupures ??= {};
+  const liste = (historique.coupures[id] ??= []);
+  if (!liste.some(([d]) => d === debut)) liste.push([debut, fin]);
+}
+
+// Coupures mesurees avant que la verification ne les enregistre (reprises des
+// journaux de GitHub Actions, voir coupures-mesurees.json) : ajoutees une fois,
+// seulement si leur journee est encore dans l'historique.
+async function reprendreCoupures(historique) {
+  let reprise;
+  try { reprise = JSON.parse(await readFile(new URL('./coupures-mesurees.json', import.meta.url), 'utf8')); } catch { return; }
+  for (const [id, liste] of Object.entries(reprise.coupures ?? {})) {
+    for (const [debut, fin] of liste) {
+      if (historique.jours[jourQuebec(new Date(debut))]) ajouterCoupure(historique, id, debut, fin);
+    }
+  }
+}
+
 export async function executer(resultats, maintenant = new Date(), { maintenance = false } = {}) {
   await mkdir(DOSSIER, { recursive: true });
   const etat = await lireJson('etat.json', { composants: {}, incident: null });
   const historique = await lireJson('historique.json', { jours: {} });
   const iso = maintenant.toISOString();
+  // Premiere verification qui enregistre les coupures : les journees d'avant
+  // n'ont que des compteurs (la page garde alors l'ancien calcul).
+  historique.coupuresDepuis ??= iso;
+  await reprendreCoupures(historique);
 
   const enPanne = [];
   const retablis = [];
@@ -173,11 +196,21 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
     let alerte = avant.alerte ?? false;
     if (!alerte && pannes >= seuil) { alerte = true; enPanne.push(id); }
     if (alerte && r.statut !== 'panne' && r.statut !== 'inconnu' && r.statut !== 'maintenance') { alerte = false; retablis.push(id); }
+    // Coupure : du premier echec au premier succes qui suit (lue par la page,
+    // voir calcul.js). « inconnu » ne l'ouvre ni ne la ferme ; une maintenance
+    // la ferme.
+    let premierEchec = avant.premierEchec ?? null;
+    if (r.statut === 'panne') premierEchec ??= iso;
+    else if (premierEchec && r.statut !== 'inconnu') {
+      ajouterCoupure(historique, id, premierEchec, iso);
+      premierEchec = null;
+    }
     etat.composants[id] = {
       statut: r.statut,
       depuis: r.statut === avant.statut ? avant.depuis : iso,
       pannesConsecutives: pannes,
       alerte,
+      ...(premierEchec ? { premierEchec } : {}),
       ...(r.latenceMs != null ? { latenceMs: r.latenceMs } : {}),
     };
   }
@@ -203,6 +236,10 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
   }
   const jours = Object.keys(historique.jours).sort();
   for (const j of jours.slice(0, Math.max(0, jours.length - JOURS_GARDES))) delete historique.jours[j];
+  const premierJour = Object.keys(historique.jours).sort()[0];
+  for (const id of Object.keys(historique.coupures ?? {})) {
+    historique.coupures[id] = historique.coupures[id].filter(([, fin]) => jourQuebec(new Date(fin)) >= premierJour);
+  }
 
   const enAlerte = COMPOSANTS.filter(c => etat.composants[c.id].alerte).map(c => c.id);
   if (enPanne.length > 0) {
