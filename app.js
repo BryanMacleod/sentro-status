@@ -233,7 +233,7 @@ async function chargerIncidents() {
   // affichee en haut de la page pendant 7 jours apres sa publication.
   const aSuivre = fermes.filter(i => i.comments > 0 && new Date(i.updated_at).getTime() > Date.now() - SEPT_JOURS);
   const [suivisOuverts, suivisFermes] = await Promise.all([Promise.all(ouverts.map(avecSuivis)), Promise.all(aSuivre.map(avecSuivis))]);
-  const champs = (i, suivis) => ({ numero: i.number, genre: genre(i), titre: i.title, texte: i.body ?? '', creeA: DEBUT_CORRIGE[i.number] ?? i.created_at, fermeA: i.closed_at, nbSuivis: i.comments ?? 0,
+  const champs = (i, suivis) => ({ numero: i.number, genre: genre(i), titre: i.title, texte: (TEXTE_CORRIGE[i.number] ?? (t => t))(i.body ?? ''), creeA: DEBUT_CORRIGE[i.number] ?? i.created_at, fermeA: i.closed_at, nbSuivis: i.comments ?? 0,
     suivis: suivis.map(c => ({ a: c.created_at, texte: texteCommentaire(c) })) });
   return {
     ouverts: ouverts.map((i, n) => champs(i, suivisOuverts[n])),
@@ -332,6 +332,8 @@ const DUREE_GROUPE_CORRIGEE = { 19: 24 };
 // Anglais : le texte corrige du 20:30:32Z reste un message automatique
 // (traduit a l'affichage) ; les deux autres recoivent leur version anglaise
 // ici (separateur ---EN---), les commentaires GitHub ne pouvant etre modifies.
+// Panne du 12 novembre mesuree a partir du premier echec (15 h 00).
+const TEXTE_CORRIGE = { 19: t => t.replace('Panne détectée à 15 h 16', 'Panne détectée à 15 h 00') };
 const COMMENTAIRES_CORRIGES = {
   '2026-11-12T20:05:23Z': t => SentroLangue.bilingue(
     t.replace('Durée de la panne : 3 min.', 'Durée de la panne : 24 min au total, avec la coupure de 15 h 11.'),
