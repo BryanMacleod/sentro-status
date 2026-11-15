@@ -196,13 +196,7 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
   const enPanne = [];
   const retablis = [];
   for (const { id } of COMPOSANTS) {
-    // Suspension temporaire demandee par Gabriel le 15 nov. : copie de secours
-    // Backblaze en echec (plafond de stockage atteint) alors que la sauvegarde
-    // principale fonctionne. A retirer des que le plafond est monte ou que
-    // /api/statut ne compte plus la copie de secours.
-    const SUSPENDU = { sauvegardes: '2026-11-17T12:00:00Z' };
-    const brut0 = resultats[id] ?? { statut: 'inconnu' };
-    const brut = SUSPENDU[id] && maintenant < new Date(SUSPENDU[id]) && (brut0.statut === 'panne' || brut0.statut === 'degrade') ? { ...brut0, statut: 'operationnel' } : brut0;
+    const brut = resultats[id] ?? { statut: 'inconnu' };
     const r = maintenance && (brut.statut === 'panne' || brut.statut === 'degrade') ? { ...brut, statut: 'maintenance' } : brut;
     const avant = etat.composants[id] ?? { statut: 'inconnu', depuis: iso, pannesConsecutives: 0, alerte: false };
     const pannes = r.statut === 'panne' ? (avant.pannesConsecutives ?? 0) + 1 : 0;
