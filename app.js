@@ -222,12 +222,12 @@ async function chargerIncidents() {
   // le graphique : 90 jours sur ordinateur, 30 sur telephone (voir afficherIncidents).
   const visibles = Date.now() - JOURS * 86400000;
   const ouverts = issues.filter(i => i.state === 'open' && genre(i));
-  const fermes = issues.filter(i => i.state === 'closed' && genre(i) === 'incident' && new Date(i.closed_at).getTime() > visibles);
+  const fermes = issues.filter(i => i.state === 'closed' && genre(i) === 'incident' && new Date(i.closed_at).getTime() > visibles && !INCIDENTS_FUSIONNES.has(i.number));
   // Mise a jour publiee sur un incident ferme (explication, correctifs) :
   // affichee en haut de la page pendant 7 jours apres sa publication.
   const aSuivre = fermes.filter(i => i.comments > 0 && new Date(i.updated_at).getTime() > Date.now() - SEPT_JOURS);
   const [suivisOuverts, suivisFermes] = await Promise.all([Promise.all(ouverts.map(avecSuivis)), Promise.all(aSuivre.map(avecSuivis))]);
-  const champs = (i, suivis) => ({ numero: i.number, genre: genre(i), titre: i.title, texte: i.body ?? '', creeA: i.created_at, fermeA: i.closed_at, nbSuivis: i.comments ?? 0,
+  const champs = (i, suivis) => ({ numero: i.number, genre: genre(i), titre: i.title, texte: i.body ?? '', creeA: DEBUT_CORRIGE[i.number] ?? i.created_at, fermeA: i.closed_at, nbSuivis: i.comments ?? 0,
     suivis: suivis.map(c => ({ a: c.created_at, texte: texteCommentaire(c) })) });
   return {
     ouverts: ouverts.map((i, n) => champs(i, suivisOuverts[n])),
@@ -301,11 +301,16 @@ async function afficherIncidents() {
 // 24 min. Les commentaires GitHub ne sont pas reecrits ici : l'affichage les
 // corrige, cle = date du commentaire. La barre du jour vient des coupures
 // mesurees (verifier/coupures-mesurees.json).
-const DUREE_GROUPE_CORRIGEE = { 18: '24 min au total', 19: '24 min au total' };
+// Une seule panne pour la journee : l'incident #18 est fusionne dans le #19
+// (retire du haut de la page et des incidents recents), qui commence a
+// 15 h 00 (premier echec) et dure 24 min.
+const INCIDENTS_FUSIONNES = new Set([18]);
+const DEBUT_CORRIGE = { 19: '2026-11-12T20:00:12Z' };
+const DUREE_GROUPE_CORRIGEE = { 19: '24 min' };
 const COMMENTAIRES_CORRIGES = {
   '2026-11-12T20:05:23Z': t => t.replace('Durée de la panne : 3 min.', 'Durée de la panne : 24 min au total, avec la coupure de 15 h 11.'),
-  '2026-11-12T20:30:32Z': t => t.replace('Durée de la panne : 14 min.', 'Durée de la panne : 24 min au total, avec la coupure de 15 h 00.'),
-  '2026-11-13T15:14:08Z': t => t.replace('à 15 h 01 et à 15 h 16, pendant environ 20 minutes au total', 'à 15 h 00 et à 15 h 11, pendant environ 24 minutes au total'),
+  '2026-11-12T20:30:32Z': t => t.replace('Durée de la panne : 14 min.', 'Durée de la panne : 24 min.'),
+  '2026-11-13T15:14:08Z': t => t.replace('à 15 h 01 et à 15 h 16, pendant environ 20 minutes au total', 'à 15 h 00 et à 15 h 11, pendant 24 minutes au total'),
 };
 function texteCommentaire(c) {
   const corriger = COMMENTAIRES_CORRIGES[c.created_at];
