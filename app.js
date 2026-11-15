@@ -74,21 +74,25 @@ function derniersJours() {
   return jours;
 }
 
-function etatJour(c) {
+// panneMin : minutes de panne comptees ce jour-la (calcul.js). Journee
+// d'avant l'enregistrement des coupures (ancien : true) : seuls les compteurs
+// existent, l'ancien calcul (5 min par verification en panne) est garde.
+function etatJour(c, { panneMin = 0, minutesJour = 1440, ancien = false } = {}) {
   if (!c) return { classe: '', dispo: null, panneMin: 0, maintenanceMin: 0 };
   const total = (c.operationnel ?? 0) + (c.degrade ?? 0) + (c.panne ?? 0);
-  if (total === 0) return (c.maintenance ?? 0) > 0
+  if (total === 0 && panneMin === 0) return (c.maintenance ?? 0) > 0
     ? { classe: 'maintenance', dispo: null, panneMin: 0, maintenanceMin: c.maintenance * 5 }
     : { classe: '', dispo: null, panneMin: 0, maintenanceMin: 0 };
-  const ratio = (c.panne ?? 0) / total;
+  if (ancien) panneMin = (c.panne ?? 0) * 5;
+  const ratio = ancien ? (c.panne ?? 0) / total : Math.min(1, panneMin / Math.max(1, minutesJour));
   // Une verification lente isolee (5 min « perturbe ») ne colore plus la
   // journee : le jaune demande de la panne (dispo sous 100 %) ou au moins
   // 15 min de perturbation, sinon la barre jaune contredisait le 100 %.
   const perturbeMin = (c.degrade ?? 0) * 5;
   const classe = ratio >= 0.05 ? 'panne'
-    : (c.panne ?? 0) > 0 || perturbeMin >= PERTURBATION_MIN ? 'degrade'
+    : panneMin > 0 || perturbeMin >= PERTURBATION_MIN ? 'degrade'
     : (c.maintenance ?? 0) > 0 ? 'maintenance' : 'operationnel';
-  return { classe, dispo: 1 - ratio, panneMin: (c.panne ?? 0) * 5, maintenanceMin: (c.maintenance ?? 0) * 5, perturbeMin: perturbeMin >= PERTURBATION_MIN ? perturbeMin : 0 };
+  return { classe, dispo: 1 - ratio, panneMin: Math.round(panneMin), maintenanceMin: (c.maintenance ?? 0) * 5, perturbeMin: perturbeMin >= PERTURBATION_MIN ? perturbeMin : 0 };
 }
 
 function pourcent(x) {
@@ -123,16 +127,25 @@ function afficherServices(etat, historique) {
   const debutPied = (depuis, plein) => depuis ? `Il y a ${jours(nbJours(depuis))}` : plein;
   $('legende').innerHTML = `<span class="periode-longue">${libelle(depuisLong, `${JOURS} derniers jours`)}</span><span class="periode-courte">${libelle(depuisCourt, '30 derniers jours')}</span>`;
 
+  const maintenant = Date.now();
+  const depuisCoupures = historique?.coupuresDepuis ? jourQuebec(new Date(historique.coupuresDepuis)) : null;
   $('composants').innerHTML = COMPOSANTS.map(({ id, nom }) => {
     const statut = etat?.composants?.[id]?.statut ?? 'inconnu';
     const long = { ok: 0, total: 0 }, court = { ok: 0, total: 0 };
+    // Coupures enregistrees, plus celle en cours (premier echec -> derniere verification).
+    const coupures = [...(historique?.coupures?.[id] ?? [])];
+    const ouverte = etat?.composants?.[id]?.premierEchec;
+    if (ouverte) coupures.push([ouverte, etat.verifieA ?? new Date(maintenant).toISOString()]);
+    const panneParJour = SentroCalcul.pannesParJour(SentroCalcul.pannesComptees(coupures));
+    const joursMesures = new Set(coupures.flatMap(([d, f]) => [jourQuebec(new Date(d)), jourQuebec(new Date(f))]));
     const barres = periode.map(j => {
       const c = historique?.jours?.[j]?.[id];
-      const e = etatJour(c);
+      const minutesJour = SentroCalcul.minutesSurveillees(j, maintenant);
+      const ancien = (c?.panne ?? 0) > 0 && !joursMesures.has(j) && (!depuisCoupures || j < depuisCoupures);
+      const e = etatJour(c, { panneMin: (panneParJour[j] ?? 0) / 60000, minutesJour, ancien });
       const recent = j >= debutCourt;
-      if (c) {
-        const t = (c.operationnel ?? 0) + (c.degrade ?? 0) + (c.panne ?? 0);
-        for (const p of recent ? [long, court] : [long]) { p.total += t; p.ok += t - (c.panne ?? 0); }
+      if (e.dispo !== null) {
+        for (const p of recent ? [long, court] : [long]) { p.total += minutesJour; p.ok += minutesJour * e.dispo; }
       }
       const maint = e.maintenanceMin ? ` · maintenance environ ${e.maintenanceMin} min` : '';
       const info = e.dispo === null
