@@ -228,7 +228,7 @@ async function chargerIncidents() {
   const aSuivre = fermes.filter(i => i.comments > 0 && new Date(i.updated_at).getTime() > Date.now() - SEPT_JOURS);
   const [suivisOuverts, suivisFermes] = await Promise.all([Promise.all(ouverts.map(avecSuivis)), Promise.all(aSuivre.map(avecSuivis))]);
   const champs = (i, suivis) => ({ numero: i.number, genre: genre(i), titre: i.title, texte: i.body ?? '', creeA: i.created_at, fermeA: i.closed_at, nbSuivis: i.comments ?? 0,
-    suivis: suivis.map(c => ({ a: c.created_at, texte: sansSignature(c.body ?? '') })) });
+    suivis: suivis.map(c => ({ a: c.created_at, texte: texteCommentaire(c) })) });
   return {
     ouverts: ouverts.map((i, n) => champs(i, suivisOuverts[n])),
     epingles: aSuivre.map((i, n) => champs(i, suivisFermes[n]))
@@ -281,7 +281,8 @@ async function afficherIncidents() {
   $('incidents-recents').innerHTML = groupes.map((g, n) => {
     const premier = g[0];
     const moment = g.length === 1 ? quand(premier.creeA) : `${quand(premier.creeA)} et ${g.slice(1).map(i => heure(i.creeA)).join(', ')}`;
-    const durees = g.map(i => duree(i.creeA, i.fermeA)).join(' et ');
+    const corrigee = g.map(i => DUREE_GROUPE_CORRIGEE[i.numero]).find(Boolean);
+    const durees = corrigee ?? g.map(i => duree(i.creeA, i.fermeA)).join(' et ');
     return `<li${new Date(premier.creeA).getTime() < trenteJours ? ' class="incident--ancien"' : ''}>
     <button type="button" class="recent-bouton" aria-expanded="false" aria-controls="recent-${n}" data-numeros="${g.map(i => i.numero).join(',')}">
       <span class="titre">${texteIssue(premier.titre)}</span>
@@ -293,17 +294,35 @@ async function afficherIncidents() {
   $('bloc-recents').hidden = donnees.recents.length === 0;
 }
 
+// Correction du 12 novembre 2026 (decision du 15 nov.) : les durees publiees
+// (3 min et 14 min, « environ 20 minutes ») comptaient a partir de l'alerte,
+// au 2e echec. Les verifications mesurent, du premier echec au premier succes,
+// deux coupures (15 h 00 a 15 h 05 et 15 h 11 a 15 h 30) : une seule panne de
+// 24 min. Les commentaires GitHub ne sont pas reecrits ici : l'affichage les
+// corrige, cle = date du commentaire. La barre du jour vient des coupures
+// mesurees (verifier/coupures-mesurees.json).
+const DUREE_GROUPE_CORRIGEE = { 18: '24 min au total', 19: '24 min au total' };
+const COMMENTAIRES_CORRIGES = {
+  '2026-11-12T20:05:23Z': t => t.replace('Durée de la panne : 3 min.', 'Durée de la panne : 24 min au total, avec la coupure de 15 h 11.'),
+  '2026-11-12T20:30:32Z': t => t.replace('Durée de la panne : 14 min.', 'Durée de la panne : 24 min au total, avec la coupure de 15 h 00.'),
+  '2026-11-13T15:14:08Z': t => t.replace('à 15 h 01 et à 15 h 16, pendant environ 20 minutes au total', 'à 15 h 00 et à 15 h 11, pendant environ 24 minutes au total'),
+};
+function texteCommentaire(c) {
+  const corriger = COMMENTAIRES_CORRIGES[c.created_at];
+  return sansSignature(corriger ? corriger(c.body ?? '') : (c.body ?? ''));
+}
+
 const CLE_SUIVIS = 'sentro-statut:suivis:v1';
 // Messages publies dans incidents.json (rempli par chargerIncidents).
 let commentairesPublies = null;
 async function suivisDe(numero) {
   const publies = commentairesPublies?.[numero];
-  if (publies) return publies.map(c => ({ a: c.created_at, texte: sansSignature(c.body ?? '') }));
+  if (publies) return publies.map(c => ({ a: c.created_at, texte: texteCommentaire(c) }));
   let cache = {};
   try { cache = JSON.parse(localStorage.getItem(CLE_SUIVIS) ?? '{}') || {}; } catch {}
   try {
     const suivis = (await lireGitHub(`https://api.github.com/repos/${DEPOT}/issues/${numero}/comments`))
-      .map(c => ({ a: c.created_at, texte: sansSignature(c.body ?? '') }));
+      .map(c => ({ a: c.created_at, texte: texteCommentaire(c) }));
     cache[numero] = suivis;
     try { localStorage.setItem(CLE_SUIVIS, JSON.stringify(cache)); } catch {}
     return suivis;
