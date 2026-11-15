@@ -6,6 +6,22 @@ https://status.groupesentro.ca
 
 Issue avec l'étiquette `incident` ou `maintenance`. Les commentaires s'affichent comme mises à jour. Fermer l'issue une fois réglé.
 
+## Écrire un incident en deux langues
+
+La page s'affiche en français ou en anglais (langue du navigateur, lien en haut, ou `?lang=en` / `?lang=fr` dans l'adresse).
+
+Dans le texte d'une issue ou d'un commentaire, une ligne seule `---EN---` sépare le français (avant) de l'anglais (après) :
+
+```
+Mise à jour du portail le 20 novembre à 23 h 00. Le portail peut être indisponible quelques minutes.
+---EN---
+Portal update on November 20 at 11:00 p.m. The portal may be unavailable for a few minutes.
+```
+
+Titre, sur une ligne : `Mise à jour du portail ---EN--- Portal update`.
+
+Sans séparateur, le texte s'affiche tel quel dans les deux langues. Les messages automatiques de la vérification sont déjà écrits dans les deux langues. Pour une maintenance, l'heure de début est lue dans la partie française (`23 h 00`).
+
 ## Secrets
 
 - `SENTRO_URL`
