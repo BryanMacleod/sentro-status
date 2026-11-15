@@ -1,5 +1,11 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
+
+// Messages publics (issues et commentaires) : francais, puis anglais apres
+// une ligne « ---EN--- » (voir langue.js). Le texto interne reste en francais.
+const SentroLangue = createRequire(import.meta.url)('../langue.js');
+export const bilingue = (fr) => SentroLangue.bilingue(fr, SentroLangue.traduireAuto(fr) ?? fr);
 
 const DOSSIER = process.env.DONNEES_DIR || 'donnees';
 const URL_SENTRO = (process.env.SENTRO_URL || '').replace(/\/+$/, '');
@@ -137,7 +143,9 @@ function heureQuebecVersDate(a, mo, j, h, mi) {
 
 export function debutMaintenance(issue) {
   const cree = new Date(issue.created_at);
-  const texte = `${issue.title ?? ''} ${issue.body ?? ''}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // Partie francaise seulement (avant ---EN---) : l'heure y est « 15 h 30 ».
+  const fr = (t) => SentroLangue.partie(t, 'fr') ?? (t ?? '');
+  const texte = `${fr(issue.title)} ${fr(issue.body)}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const heure = texte.match(/\b(\d{1,2})\s*h\s*(\d{2})?\b/);
   if (!heure || Number(heure[1]) > 23) return cree;
   const date = texte.match(new RegExp(`\\b(\\d{1,2})(?:er)?\\s+(${MOIS.join('|')})(?:\\s+(\\d{4}))?`));
@@ -251,14 +259,14 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
         method: 'POST',
         body: JSON.stringify({
           title: `Panne : ${enAlerte.map(nomDe).join(', ')}`,
-          body: `Panne détectée à ${heureQuebec(maintenant)} (heure du Québec) par la vérification automatique.\n\nServices touchés : ${enAlerte.map(nomDe).join(', ')}.\n\n@${proprietaire()}`,
+          body: `${bilingue(`Panne détectée à ${heureQuebec(maintenant)} (heure du Québec) par la vérification automatique.\n\nServices touchés : ${enAlerte.map(nomDe).join(', ')}.`)}\n\n@${proprietaire()}`,
           labels: ['incident', 'automatique'],
         }),
       });
       etat.incident = { numero: issue?.number ?? null, debut: iso, composants: enAlerte };
     } else {
       if (etat.incident.numero) {
-        await github(`/issues/${etat.incident.numero}/comments`, { method: 'POST', body: JSON.stringify({ body: `${heureQuebec(maintenant)} : aussi en panne : ${noms}.` }) });
+        await github(`/issues/${etat.incident.numero}/comments`, { method: 'POST', body: JSON.stringify({ body: bilingue(`${heureQuebec(maintenant)} : aussi en panne : ${noms}.`) }) });
       }
       etat.incident.composants = [...new Set([...etat.incident.composants, ...enPanne])];
     }
@@ -269,13 +277,13 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
       const d = duree(etat.incident.debut, maintenant);
       await texto(`Sentro : rétabli (${noms}) à ${heureQuebec(maintenant)}, panne de ${d}.`);
       if (etat.incident.numero) {
-        await github(`/issues/${etat.incident.numero}/comments`, { method: 'POST', body: JSON.stringify({ body: `Rétabli à ${heureQuebec(maintenant)}. Durée de la panne : ${d}.` }) });
+        await github(`/issues/${etat.incident.numero}/comments`, { method: 'POST', body: JSON.stringify({ body: bilingue(`Rétabli à ${heureQuebec(maintenant)}. Durée de la panne : ${d}.`) }) });
         await github(`/issues/${etat.incident.numero}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });
       }
       etat.incident = null;
     } else {
       await texto(`Sentro : rétabli ${noms} à ${heureQuebec(maintenant)}. Encore en panne : ${enAlerte.map(nomDe).join(', ')}.`);
-      if (etat.incident?.numero) await github(`/issues/${etat.incident.numero}/comments`, { method: 'POST', body: JSON.stringify({ body: `${heureQuebec(maintenant)} : rétabli : ${noms}.` }) });
+      if (etat.incident?.numero) await github(`/issues/${etat.incident.numero}/comments`, { method: 'POST', body: JSON.stringify({ body: bilingue(`${heureQuebec(maintenant)} : rétabli : ${noms}.`) }) });
     }
   }
 
