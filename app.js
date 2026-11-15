@@ -6,66 +6,76 @@ const FUSEAU = 'America/Toronto';
 // Perturbation minimale (minutes) pour colorer une journee en jaune.
 const PERTURBATION_MIN = 15;
 
-const COMPOSANTS = [
-  { id: 'portail', nom: 'Portail web' },
-  { id: 'connexion', nom: 'Connexion' },
-  { id: 'base', nom: 'Base de données' },
-  { id: 'courriels', nom: 'Courriels' },
-  { id: 'notifications', nom: 'Notifications' },
-  { id: 'stockage', nom: 'Stockage des fichiers' },
-  { id: 'sauvegardes', nom: 'Sauvegardes' },
-  { id: 'restauration', nom: 'Test de restauration' },
-  { id: 'taches', nom: 'Tâches planifiées' },
-];
-
-const LIBELLES = {
-  operationnel: 'Opérationnel',
-  degrade: 'Perturbé',
-  panne: 'En panne',
-  inconnu: 'En attente',
-  maintenance: 'Maintenance',
-};
-
-const GLOBAL = {
-  operationnel: 'Tous les services fonctionnent',
-  degrade: 'Perturbation en cours',
-  panne: 'Panne en cours',
-  inconnu: 'État indisponible',
-  maintenance: 'Maintenance en cours',
-};
+// Noms et textes : langue.js (un seul dictionnaire, francais et anglais).
+const COMPOSANTS = Object.keys(SentroLangue.COMPOSANTS);
 
 const $ = (id) => document.getElementById(id);
+
+// Langue : ?lang= dans l'adresse, sinon le choix memorise, sinon le navigateur.
+const CLE_LANGUE = 'sentro-statut:langue';
+function langueMemorisee() {
+  try { return localStorage.getItem(CLE_LANGUE); } catch { return null; }
+}
+let langue = SentroLangue.choisirLangue({
+  parametre: new URLSearchParams(location.search).get('lang'),
+  memorisee: langueMemorisee(),
+  navigateur: navigator.languages?.length ? navigator.languages : [navigator.language],
+});
+let T = SentroLangue.textes(langue);
+
+function appliquerLangue() {
+  T = SentroLangue.textes(langue);
+  document.documentElement.lang = T.code;
+  document.title = T.titrePage;
+  document.querySelector('meta[name="description"]')?.setAttribute('content', T.description);
+  for (const el of document.querySelectorAll('[data-t]')) el.textContent = T[el.dataset.t];
+  const lien = $('langue');
+  const url = new URL(location.href);
+  url.searchParams.set('lang', T.autre);
+  lien.href = url.search + url.hash;
+  lien.textContent = T.nomAutre;
+  lien.lang = SentroLangue.textes(T.autre).code;
+  lien.hreflang = lien.lang;
+}
+appliquerLangue();
+
+$('langue').addEventListener('click', e => {
+  e.preventDefault();
+  langue = T.autre;
+  try { localStorage.setItem(CLE_LANGUE, langue); } catch {}
+  const url = new URL(location.href);
+  url.searchParams.set('lang', langue);
+  try { history.replaceState(null, '', url.search + url.hash); } catch {}
+  appliquerLangue();
+  bulle.hidden = true;
+  rafraichir();
+  afficherIncidents();
+});
 
 function echapper(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+// Texte d'une issue ou d'un commentaire, dans la langue de la page (partie
+// avant/apres « ---EN--- », ou message automatique traduit).
 function texteIssue(s) {
-  return echapper(String(s ?? '').replace(/(^|\s)@[\w-]+/g, '$1').replace(/\r/g, '').trim());
+  return echapper(SentroLangue.localiser(s, langue).replace(/(^|\s)@[\w-]+/g, '$1').replace(/\r/g, '').trim());
 }
 
 function jourQuebec(date) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: FUSEAU, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
 
-function dateLisible(jour) {
-  const [a, m, j] = jour.split('-').map(Number);
-  return new Intl.DateTimeFormat('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(a, m - 1, j)));
-}
-function quand(iso) {
-  return new Intl.DateTimeFormat('fr-CA', { timeZone: FUSEAU, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
-}
+const dateLisible = jour => SentroLangue.dateLisible(jour, langue);
+const quand = iso => SentroLangue.quand(iso, langue);
+const heure = iso => SentroLangue.heure(iso, langue);
+const pourcent = x => SentroLangue.pourcent(x, langue);
 
 function ilYa(iso) {
-  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (min < 1) return "à l'instant";
-  if (min < 60) return `il y a ${min} min`;
-  const h = Math.floor(min / 60);
-  return h < 24 ? `il y a ${h} h` : `il y a ${Math.floor(h / 24)} j`;
+  return T.ilYa(Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
 }
 
 function duree(debutIso, finIso) {
-  const min = Math.max(1, Math.round((new Date(finIso) - new Date(debutIso)) / 60000));
-  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`;
+  return T.duree(Math.max(1, Math.round((new Date(finIso) - new Date(debutIso)) / 60000)));
 }
 function derniersJours() {
   const [a, m, j] = jourQuebec(new Date()).split('-').map(Number);
@@ -95,10 +105,6 @@ function etatJour(c, { panneMin = 0, minutesJour = 1440, ancien = false } = {}) 
   return { classe, dispo: 1 - ratio, panneMin: Math.round(panneMin), maintenanceMin: (c.maintenance ?? 0) * 5, perturbeMin: perturbeMin >= PERTURBATION_MIN ? perturbeMin : 0 };
 }
 
-function pourcent(x) {
-  return `${(Math.floor(x * 10000) / 100).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
-}
-
 async function lireDonnee(nom) {
   try {
     const r = await fetch(`${CONTENU}/${nom}?ref=donnees`, { cache: 'no-cache', headers: { Accept: 'application/vnd.github.raw+json' } });
@@ -122,14 +128,14 @@ function afficherServices(etat, historique) {
   const periode = depuisLong ? tous.filter(j => j >= depuisLong) : tous;
   // Nombre de jours surveilles, de la premiere journee a aujourd'hui inclus.
   const nbJours = depuis => tous.length - tous.indexOf(depuis);
-  const jours = n => (n === 1 ? '1 jour' : `${n} jours`);
-  const libelle = (depuis, plein) => depuis ? `Surveillé depuis ${jours(nbJours(depuis))}` : plein;
-  const debutPied = (depuis, plein) => depuis ? `Il y a ${jours(nbJours(depuis))}` : plein;
-  $('legende').innerHTML = `<span class="periode-longue">${libelle(depuisLong, `${JOURS} derniers jours`)}</span><span class="periode-courte">${libelle(depuisCourt, '30 derniers jours')}</span>`;
+  const libelle = (depuis, n) => depuis ? T.surveilleDepuis(T.jours(nbJours(depuis))) : T.derniersJours(n);
+  const debutPied = (depuis, n) => T.ilYaJours(T.jours(depuis ? nbJours(depuis) : n));
+  $('legende').innerHTML = `<span class="periode-longue">${libelle(depuisLong, JOURS)}</span><span class="periode-courte">${libelle(depuisCourt, 30)}</span>`;
 
   const maintenant = Date.now();
   const depuisCoupures = historique?.coupuresDepuis ? jourQuebec(new Date(historique.coupuresDepuis)) : null;
-  $('composants').innerHTML = COMPOSANTS.map(({ id, nom }) => {
+  $('composants').innerHTML = COMPOSANTS.map(id => {
+    const nom = SentroLangue.COMPOSANTS[id][langue];
     const statut = etat?.composants?.[id]?.statut ?? 'inconnu';
     const long = { ok: 0, total: 0 }, court = { ok: 0, total: 0 };
     // Coupures enregistrees, plus celle en cours (premier echec -> derniere verification).
@@ -147,16 +153,16 @@ function afficherServices(etat, historique) {
       if (e.dispo !== null) {
         for (const p of recent ? [long, court] : [long]) { p.total += minutesJour; p.ok += minutesJour * e.dispo; }
       }
-      const maint = e.maintenanceMin ? ` · maintenance environ ${e.maintenanceMin} min` : '';
       const info = e.dispo === null
-        ? `${dateLisible(j)} · ${e.maintenanceMin ? `Maintenance environ ${e.maintenanceMin} min` : premier && j < premier ? 'Pas encore surveillé' : 'Aucune donnée'}`
-        : `${dateLisible(j)} · ${pourcent(e.dispo)} disponible${e.panneMin ? ` · environ ${e.panneMin} min de panne` : ''}${e.perturbeMin ? ` · perturbé environ ${e.perturbeMin} min` : ''}${maint}`;
+        ? `${dateLisible(j)} · ${e.maintenanceMin ? T.maintenanceSeule(e.maintenanceMin) : premier && j < premier ? T.pasSurveille : T.aucuneDonnee}`
+        : [dateLisible(j), T.disponible(pourcent(e.dispo)), e.panneMin && T.panneMin(e.panneMin), e.perturbeMin && T.perturbeMin(e.perturbeMin), e.maintenanceMin && T.maintenanceMin(e.maintenanceMin)]
+          .filter(Boolean).join(' · ');
       return `<span class="barre${e.classe ? ` barre--${e.classe}` : ''}${recent ? '' : ' barre--ancienne'}" tabindex="0" data-info="${echapper(info)}"></span>`;
     }).join('');
     return `<li class="composant">
-      <div class="composant-ligne"><span class="composant-nom">${echapper(nom)}</span><span class="statut statut--${statut}">${LIBELLES[statut] ?? statut}</span></div>
-      <div class="barres" aria-label="Disponibilité de ${echapper(nom)} par jour">${barres}</div>
-      <div class="composant-pied"><span><span class="periode-longue">${debutPied(depuisLong, `Il y a ${JOURS} jours`)}</span><span class="periode-courte">${debutPied(depuisCourt, 'Il y a 30 jours')}</span></span><span class="dispo"><span class="periode-longue">${long.total ? `${pourcent(long.ok / long.total)} disponible` : ''}</span><span class="periode-courte">${court.total ? `${pourcent(court.ok / court.total)} disponible` : ''}</span></span><span>Aujourd'hui</span></div>
+      <div class="composant-ligne"><span class="composant-nom">${echapper(nom)}</span><span class="statut statut--${statut}">${echapper(T.statuts[statut] ?? statut)}</span></div>
+      <div class="barres" aria-label="${echapper(T.dispoParJour(nom))}">${barres}</div>
+      <div class="composant-pied"><span><span class="periode-longue">${debutPied(depuisLong, JOURS)}</span><span class="periode-courte">${debutPied(depuisCourt, 30)}</span></span><span class="dispo"><span class="periode-longue">${long.total ? T.disponible(pourcent(long.ok / long.total)) : ''}</span><span class="periode-courte">${court.total ? T.disponible(pourcent(court.ok / court.total)) : ''}</span></span><span>${T.aujourdhui}</span></div>
     </li>`;
   }).join('');
 }
@@ -164,13 +170,13 @@ function afficherServices(etat, historique) {
 let derniereVerif = null;
 
 function majHeure() {
-  $('global-maj').textContent = derniereVerif ? `Dernière vérification ${ilYa(derniereVerif)}` : '';
+  $('global-maj').textContent = derniereVerif ? T.derniereVerif(ilYa(derniereVerif)) : '';
 }
 
 function afficherGlobal(etat) {
   const g = etat?.global ?? 'inconnu';
   $('global').className = `global global--${g}`;
-  $('global-titre').textContent = GLOBAL[g] ?? GLOBAL.inconnu;
+  $('global-titre').textContent = T.global[g] ?? T.global.inconnu;
   const verif = etat?.verifieA ?? null;
   const nouvelle = derniereVerif !== null && verif !== null && verif !== derniereVerif;
   derniereVerif = verif;
@@ -243,7 +249,7 @@ function article(i, etiquette, classe) {
       <span class="incident-etiquette">${etiquette}</span>
       <h3>${texteIssue(i.titre)}</h3>
       ${i.texte ? `<p>${texteIssue(i.texte)}</p>` : ''}
-      <span class="quand">Publié le ${quand(i.creeA)}</span>
+      <span class="quand">${T.publie(quand(i.creeA))}</span>
       ${i.suivis.length ? `<ul>${i.suivis.map(c => `<li><time>${quand(c.a)}</time>${texteIssue(c.texte)}</li>`).join('')}</ul>` : ''}
     </article>`;
 }
@@ -259,10 +265,10 @@ async function afficherIncidents() {
   if (!donnees) return;
 
   const blocs = [
-    ...donnees.ouverts.map(i => article(i, i.genre === 'maintenance' ? 'Maintenance' : 'Incident', i.genre)),
+    ...donnees.ouverts.map(i => article(i, T.etiquette[i.genre === 'maintenance' ? 'maintenance' : 'incident'], i.genre)),
     // Les mises a jour d'un incident resolu ne montrent que ces mises a jour,
     // sous le titre de l'incident (le texte automatique de detection est omis).
-    ...(donnees.epingles ?? []).map(i => article({ ...i, texte: '' }, `Mise à jour · résolu le ${quand(i.fermeA)}`, 'resolu')),
+    ...(donnees.epingles ?? []).map(i => article({ ...i, texte: '' }, T.miseAJour(quand(i.fermeA)), 'resolu')),
   ];
   $('incidents-en-cours').innerHTML = blocs.join('');
   $('incidents-en-cours').hidden = blocs.length === 0;
@@ -277,16 +283,15 @@ async function afficherIncidents() {
   }
   groupes.reverse();
   const trenteJours = Date.now() - 30 * 86400000;
-  const heure = iso => new Intl.DateTimeFormat('fr-CA', { timeZone: FUSEAU, hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
   $('incidents-recents').innerHTML = groupes.map((g, n) => {
     const premier = g[0];
-    const moment = g.length === 1 ? quand(premier.creeA) : `${quand(premier.creeA)} et ${g.slice(1).map(i => heure(i.creeA)).join(', ')}`;
+    const moment = g.length === 1 ? quand(premier.creeA) : `${quand(premier.creeA)}${T.et}${g.slice(1).map(i => heure(i.creeA)).join(', ')}`;
     const corrigee = g.map(i => DUREE_GROUPE_CORRIGEE[i.numero]).find(Boolean);
-    const durees = corrigee ?? g.map(i => duree(i.creeA, i.fermeA)).join(' et ');
+    const durees = corrigee ? T.duree(corrigee) : g.map(i => duree(i.creeA, i.fermeA)).join(T.et);
     return `<li${new Date(premier.creeA).getTime() < trenteJours ? ' class="incident--ancien"' : ''}>
-    <button type="button" class="recent-bouton" aria-expanded="false" aria-controls="recent-${n}" data-numeros="${g.map(i => i.numero).join(',')}">
+    <button type="button" class="recent-bouton" aria-expanded="false" aria-controls="recent-${n}" data-voir="${T.voir}" data-masquer="${T.masquer}" data-numeros="${g.map(i => i.numero).join(',')}">
       <span class="titre">${texteIssue(premier.titre)}</span>
-      <span class="quand">${moment} · résolu en ${durees}</span>
+      <span class="quand">${moment} · ${T.resoluEn(durees)}</span>
     </button>
     <div class="recent-details" id="recent-${n}" hidden></div>
   </li>`;
@@ -305,16 +310,41 @@ async function afficherIncidents() {
 // (retire du haut de la page et des incidents recents), qui commence a
 // 15 h 00 (premier echec) et dure 24 min.
 const INCIDENTS_FUSIONNES = new Set([18]);
+// Version anglaise du message d'explication publie en francais sur le #19
+// (commentaire du 2026-11-13T15:14:08Z), avec la duree corrigee (24 minutes).
+const EXPLICATION_12_NOVEMBRE_EN = `Explanation and corrective measures
+
+On November 12, the portal was unavailable for 24 minutes. No data was lost: everything that had been saved before the outage was intact when service returned.
+
+What happened: our server received an abnormal volume of traffic, the origin of which could not be confirmed, at the same time as the portal itself was placing a heavy load on the server. Combined, these two factors exceeded its capacity.
+
+What we have fixed since:
+• Traffic protection: the portal now goes through a protection service that filters abnormal traffic before it reaches the server.
+• A much lighter portal: automatic refresh has been redesigned. An open screen now places 5 to 10 times less load on the server than before, and a background tab or a locked phone barely loads it at all. Messages, notifications and calls still arrive just as quickly.
+• More capacity: the server has been doubled, and the portal now runs as 4 copies. If one of them has a problem, it restarts on its own while the others keep serving you.
+• Optimized database: the most-used screens now make far fewer queries. The messaging badge, for example, went from 164 queries to 8.
+• Stronger monitoring: we now measure load minute by minute and are alerted before a problem affects you. This monitoring has already helped us identify and fix excessive memory use by the hourly backup.
+
+Thank you for your patience. These changes make Sentro more robust for you and for the growth ahead.`;
 const DEBUT_CORRIGE = { 19: '2026-11-12T20:00:12Z' };
-const DUREE_GROUPE_CORRIGEE = { 19: '24 min' };
+// Duree corrigee du groupe, en minutes (formatee dans la langue de la page).
+const DUREE_GROUPE_CORRIGEE = { 19: 24 };
+// Anglais : le texte corrige du 20:30:32Z reste un message automatique
+// (traduit a l'affichage) ; les deux autres recoivent leur version anglaise
+// ici (separateur ---EN---), les commentaires GitHub ne pouvant etre modifies.
 const COMMENTAIRES_CORRIGES = {
-  '2026-11-12T20:05:23Z': t => t.replace('Durée de la panne : 3 min.', 'Durée de la panne : 24 min au total, avec la coupure de 15 h 11.'),
+  '2026-11-12T20:05:23Z': t => SentroLangue.bilingue(
+    t.replace('Durée de la panne : 3 min.', 'Durée de la panne : 24 min au total, avec la coupure de 15 h 11.'),
+    'Restored at 3:05 p.m. Outage duration: 24 min in total, including the 3:11 p.m. interruption.'),
   '2026-11-12T20:30:32Z': t => t.replace('Durée de la panne : 14 min.', 'Durée de la panne : 24 min.'),
-  '2026-11-13T15:14:08Z': t => t.replace('inaccessible deux fois, à 15 h 01 et à 15 h 16, pendant environ 20 minutes au total', 'inaccessible pendant 24 minutes'),
+  '2026-11-13T15:14:08Z': t => SentroLangue.bilingue(
+    t.replace('inaccessible deux fois, à 15 h 01 et à 15 h 16, pendant environ 20 minutes au total', 'inaccessible pendant 24 minutes'),
+    EXPLICATION_12_NOVEMBRE_EN),
 };
 function texteCommentaire(c) {
   const corriger = COMMENTAIRES_CORRIGES[c.created_at];
-  return sansSignature(corriger ? corriger(c.body ?? '') : (c.body ?? ''));
+  const texte = sansSignature(c.body ?? '');
+  return corriger ? corriger(texte) : texte;
 }
 
 const CLE_SUIVIS = 'sentro-statut:suivis:v1';
@@ -344,7 +374,7 @@ document.addEventListener('click', async e => {
   bouton.setAttribute('aria-expanded', String(ouvrir));
   details.hidden = !ouvrir;
   if (!ouvrir || details.dataset.charge) return;
-  details.innerHTML = '<p class="recent-attente">Chargement…</p>';
+  details.innerHTML = `<p class="recent-attente">${T.chargement}</p>`;
   const numeros = bouton.dataset.numeros.split(',').map(Number);
   const incidents = (JSON.parse(localStorage.getItem(CLE_INCIDENTS) ?? 'null')?.recents ?? []);
   const blocs = await Promise.all(numeros.map(async numero => {
@@ -357,7 +387,7 @@ document.addEventListener('click', async e => {
     </div>`;
   }));
   const contenu = blocs.join('');
-  details.innerHTML = contenu || '<p class="recent-attente">Messages indisponibles pour le moment.</p>';
+  details.innerHTML = contenu || `<p class="recent-attente">${T.messagesIndisponibles}</p>`;
   if (contenu) details.dataset.charge = '1';
 });
 

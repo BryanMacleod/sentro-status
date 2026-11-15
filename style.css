@@ -60,6 +60,10 @@ body {
 .marque span { color: var(--texte); }
 .bouclier { width: 26px; height: 28px; }
 .sous-titre { color: var(--texte-3); font-size: 14px; font-weight: 500; }
+.entete-droite { display: flex; align-items: center; gap: 16px; }
+.langue { color: var(--texte-2); font-size: 13px; font-weight: 600; text-decoration: none; padding: 6px 10px; border: 1px solid var(--bordure); border-radius: 8px; }
+.langue:hover { color: var(--texte); border-color: var(--texte-3); }
+.langue:focus-visible { outline: 2px solid var(--bleu); outline-offset: 2px; }
 
 main.conteneur { padding-top: 28px; padding-bottom: 8px; display: grid; gap: 20px; }
 
@@ -132,8 +136,8 @@ main.conteneur { padding-top: 28px; padding-bottom: 8px; display: grid; gap: 20p
 .recents .titre { font-weight: 600; }
 .recents .quand { display: block; font-size: 12px; color: var(--texte-3); margin-top: 2px; }
 .recent-bouton { all: unset; display: block; width: 100%; cursor: pointer; box-sizing: border-box; }
-.recent-bouton::after { content: "Voir le message"; display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--bleu); }
-.recent-bouton[aria-expanded="true"]::after { content: "Masquer le message"; }
+.recent-bouton::after { content: attr(data-voir); display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--bleu); }
+.recent-bouton[aria-expanded="true"]::after { content: attr(data-masquer); }
 .recent-bouton:focus-visible { outline: 2px solid var(--bleu); outline-offset: 4px; border-radius: 6px; }
 .recent-details { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--bordure); display: grid; gap: 12px; }
 .recent-message p { margin: 0 0 6px; color: var(--texte-2); white-space: pre-line; }
@@ -152,6 +156,7 @@ main.conteneur { padding-top: 28px; padding-bottom: 8px; display: grid; gap: 20p
   .global-titre { font-size: 16px; }
   .composant, .carte-entete, .recents li { padding-left: 16px; padding-right: 16px; }
   .sous-titre { font-size: 13px; }
+  .entete-droite { gap: 10px; }
 }
 /* Mise a jour d'un incident resolu (explication, correctifs) : epinglee 7 jours. */
 .incident--resolu { border-left-color: var(--vert); }

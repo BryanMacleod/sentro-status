@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>État des services Sentro</title>
-  <meta name="description" content="État en temps réel des services Sentro et historique de disponibilité.">
+  <title>Sentro</title>
+  <meta name="description" content="">
   <meta name="theme-color" content="#111111">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 92 100'%3E%3Cpath d='M46 4 4 16v36c0 24 20 38 42 46 22-8 42-22 42-46V16Z' fill='%23111'/%3E%3Ctext x='46' y='68' font-family='Arial,sans-serif' font-size='52' font-weight='700' fill='%23fff' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <header class="entete">
@@ -19,7 +19,10 @@
         </svg>
         <span>Sentro</span>
       </a>
-      <span class="sous-titre">État des services</span>
+      <div class="entete-droite">
+        <span class="sous-titre" data-t="sousTitre"></span>
+        <a id="langue" class="langue" href="?lang=en"></a>
+      </div>
     </div>
   </header>
 
@@ -27,7 +30,7 @@
     <section id="global" class="global global--inconnu" aria-live="polite">
       <span class="pastille" aria-hidden="true"></span>
       <div>
-        <p id="global-titre" class="global-titre">Chargement…</p>
+        <p id="global-titre" class="global-titre" data-t="chargement"></p>
         <p id="global-maj" class="global-maj"></p>
       </div>
     </section>
@@ -36,23 +39,24 @@
 
     <section class="carte">
       <div class="carte-entete">
-        <h2>Services</h2>
-        <p id="legende" class="legende"><span class="periode-longue">90 derniers jours</span><span class="periode-courte">30 derniers jours</span></p>
+        <h2 data-t="services"></h2>
+        <p id="legende" class="legende"></p>
       </div>
       <ul id="composants" class="composants"></ul>
     </section>
 
     <section class="carte" id="bloc-recents" hidden>
-      <div class="carte-entete"><h2>Incidents récents</h2></div>
+      <div class="carte-entete"><h2 data-t="recents"></h2></div>
       <ul id="incidents-recents" class="recents"></ul>
     </section>
   </main>
 
   <footer class="conteneur pied">
-    <span>Vérifié toutes les 5 minutes depuis l'extérieur de nos serveurs.</span>
+    <span data-t="pied"></span>
   </footer>
 
-  <script src="calcul.js?v=10" defer></script>
-  <script src="app.js?v=10" defer></script>
+  <script src="calcul.js?v=11" defer></script>
+  <script src="langue.js?v=11" defer></script>
+  <script src="app.js?v=11" defer></script>
 </body>
 </html>
