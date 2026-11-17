@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { createHmac } from 'node:crypto';
 
 // Messages publics (issues et commentaires) : francais, puis anglais apres
 // une ligne « ---EN--- » (voir langue.js). Le texto interne reste en francais.
@@ -31,6 +32,38 @@ const SEUIL_ALERTE = {};
 const SEUIL_DEFAUT = 2;
 
 const pause = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Panne non acquittee : rappel par texto aux 5 minutes (12 textos au plus par
+// panne, le premier compris), puis appel vocal apres 15 minutes (3 au plus,
+// 5 minutes d'ecart). « J'ai vu » : lien signe du texto (/api/statut/vu,
+// secret STATUT_VU_SECRET, le meme que dans le .env du portail) ou reponse
+// « VU » au texto. Redemarrages du portail : alerte au-dela de 3 en 15 min.
+export const TEXTOS_MAX = 12;
+export const APPELS_MAX = 3;
+const RAPPEL_MS = 5 * 60000;
+const APPEL_APRES_MS = 15 * 60000;
+export const REDEMARRAGES_MAX = 3;
+
+/** Signature du lien « J'ai vu » (meme calcul que src/lib/statut-vu.ts du portail). */
+export function signatureVu(id, secret) {
+  return createHmac('sha256', secret).update(id).digest('base64url').slice(0, 22);
+}
+
+function lienVu(id) {
+  const secret = process.env.STATUT_VU_SECRET;
+  return secret && URL_SENTRO ? `${URL_SENTRO}/api/statut/vu?i=${id}&s=${signatureVu(id, secret)}` : null;
+}
+
+/** Que faire pour une panne en cours : rappel par texto, appel vocal (pur, teste). */
+export function relances(incident, maintenant) {
+  if (!incident || incident.vu) return { texto: false, appel: false };
+  const t = maintenant.getTime();
+  const depuis = (iso) => (iso ? t - new Date(iso).getTime() : Infinity);
+  return {
+    texto: (incident.textos ?? 0) < TEXTOS_MAX && depuis(incident.dernierTexto) >= RAPPEL_MS - 30000,
+    appel: (incident.appels ?? 0) < APPELS_MAX && depuis(incident.debut) >= APPEL_APRES_MS - 30000 && depuis(incident.dernierAppel) >= RAPPEL_MS - 30000,
+  };
+}
 
 async function appeler(chemin, { json = false, delai = 15000 } = {}) {
   const debut = Date.now();
@@ -80,7 +113,9 @@ export async function verifier() {
     internes[id] = { statut: s ?? (externe.portail.statut === 'panne' ? 'panne' : 'inconnu') };
     if (id === 'base' && statut.corps?.composants?.base?.latenceMs != null) internes.base.latenceMs = statut.corps.composants.base.latenceMs;
   }
-  return { ...externe, ...internes };
+  // Redemarrages du portail (15 min) et panne vue par le lien « J'ai vu ».
+  const meta = statut.ok ? { redemarrages15min: statut.corps?.redemarrages15min ?? null, vu: statut.corps?.vu ?? null } : { redemarrages15min: null, vu: null };
+  return { ...externe, ...internes, meta };
 }
 
 function jourQuebec(date) {
@@ -102,14 +137,45 @@ async function lireJson(nom, defaut) {
 
 async function texto(message) {
   const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: jeton, TWILIO_FROM: de, ALERTE_TEL: a } = process.env;
-  if (SIMULATION) { console.log(`[simulation] texto : ${message}`); return; }
-  if (!sid || !jeton || !de || !a) { console.log('Texto non envoyé : secrets Twilio ou ALERTE_TEL absents.'); return; }
+  if (SIMULATION) { console.log(`[simulation] texto : ${message}`); return true; }
+  if (!sid || !jeton || !de || !a) { console.log('Texto non envoyé : secrets Twilio ou ALERTE_TEL absents.'); return false; }
   const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
     method: 'POST',
     headers: { Authorization: `Basic ${Buffer.from(`${sid}:${jeton}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ From: de, To: a, Body: message }),
   }).catch(() => null);
   console.log(r?.ok ? 'Texto envoyé.' : `Texto en échec (${r?.status ?? 'réseau'}).`);
+  return !!r?.ok;
+}
+
+const echapperXml = (s) => s.replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
+
+async function appelVocal(message) {
+  const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: jeton, TWILIO_FROM: de, ALERTE_TEL: a } = process.env;
+  if (SIMULATION) { console.log(`[simulation] appel : ${message}`); return true; }
+  if (!sid || !jeton || !de || !a) { console.log('Appel non fait : secrets Twilio ou ALERTE_TEL absents.'); return false; }
+  const dit = `<Say language="fr-CA">${echapperXml(message)}</Say>`;
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${Buffer.from(`${sid}:${jeton}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ From: de, To: a, Twiml: `<Response>${dit}<Pause length="1"/>${dit}</Response>` }),
+  }).catch(() => null);
+  console.log(r?.ok ? 'Appel lancé.' : `Appel en échec (${r?.status ?? 'réseau'}).`);
+  return !!r?.ok;
+}
+
+// Reponse « VU » au texto depuis le debut de la panne (Twilio).
+async function vuParTexto(debutIso) {
+  const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: jeton, TWILIO_FROM: de, ALERTE_TEL: a } = process.env;
+  if (SIMULATION || !sid || !jeton || !de || !a) return false;
+  const q = new URLSearchParams({ To: de, From: a, PageSize: '20' });
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json?${q}`, {
+    headers: { Authorization: `Basic ${Buffer.from(`${sid}:${jeton}`).toString('base64')}` },
+  }).catch(() => null);
+  if (!r?.ok) return false;
+  const corps = await r.json().catch(() => null);
+  const debut = new Date(debutIso).getTime();
+  return (corps?.messages ?? []).some(m => new Date(m.date_sent ?? m.date_created).getTime() >= debut && /^\s*vu\b/i.test(m.body ?? ''));
 }
 
 async function github(chemin, options = {}) {
@@ -253,8 +319,12 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
   if (enPanne.length > 0) {
     const noms = enPanne.map(nomDe).join(', ');
     const details = enPanne.map(id => `${nomDe(id)}${resultats[id]?.cause ? ` (${resultats[id].cause})` : ''}`).join(', ');
-    await texto(`Sentro : PANNE ${details} à ${heureQuebec(maintenant)}. status.groupesentro.ca`);
-    if (!etat.incident) {
+    const nouvelle = !etat.incident;
+    const id = etat.incident?.id ?? maintenant.getTime().toString(36);
+    const lien = lienVu(id);
+    const envoye = await texto(`Sentro : PANNE ${details} à ${heureQuebec(maintenant)}. ${lien ? `J'ai vu : ${lien}` : 'Répondez VU pour arrêter les rappels.'}`);
+    if (!nouvelle && envoye) { etat.incident.textos = (etat.incident.textos ?? 0) + 1; etat.incident.dernierTexto = iso; }
+    if (nouvelle) {
       const issue = await github('/issues', {
         method: 'POST',
         body: JSON.stringify({
@@ -263,7 +333,7 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
           labels: ['incident', 'automatique'],
         }),
       });
-      etat.incident = { numero: issue?.number ?? null, debut: iso, composants: enAlerte };
+      etat.incident = { numero: issue?.number ?? null, debut: iso, composants: enAlerte, id, textos: envoye ? 1 : 0, dernierTexto: envoye ? iso : null, appels: 0, dernierAppel: null, vu: false };
     } else {
       if (etat.incident.numero) {
         await github(`/issues/${etat.incident.numero}/comments`, { method: 'POST', body: JSON.stringify({ body: bilingue(`${heureQuebec(maintenant)} : aussi en panne : ${noms}.`) }) });
@@ -284,6 +354,39 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
     } else {
       await texto(`Sentro : rétabli ${noms} à ${heureQuebec(maintenant)}. Encore en panne : ${enAlerte.map(nomDe).join(', ')}.`);
       if (etat.incident?.numero) await github(`/issues/${etat.incident.numero}/comments`, { method: 'POST', body: JSON.stringify({ body: bilingue(`${heureQuebec(maintenant)} : rétabli : ${noms}.`) }) });
+    }
+  }
+
+  // Panne toujours en cours et pas encore vue : rappels, puis appels.
+  if (etat.incident && enAlerte.length > 0 && enPanne.length === 0) {
+    const inc = etat.incident;
+    inc.id ??= new Date(inc.debut).getTime().toString(36);
+    if (!inc.vu && (resultats.meta?.vu === inc.id || await vuParTexto(inc.debut))) {
+      inc.vu = true;
+      console.log('Panne vue : rappels arrêtés.');
+    }
+    const r = relances(inc, maintenant);
+    if (r.texto) {
+      const lien = lienVu(inc.id);
+      if (await texto(`Sentro : rappel, PANNE ${enAlerte.map(nomDe).join(', ')} depuis ${duree(inc.debut, maintenant)}. ${lien ? `J'ai vu : ${lien}` : 'Répondez VU.'}`)) {
+        inc.textos = (inc.textos ?? 0) + 1;
+        inc.dernierTexto = iso;
+      }
+    }
+    if (r.appel && await appelVocal(`Alerte Sentro. Panne en cours depuis ${duree(inc.debut, maintenant)} : ${enAlerte.map(nomDe).join(', ')}. Consultez vos textos.`)) {
+      inc.appels = (inc.appels ?? 0) + 1;
+      inc.dernierAppel = iso;
+    }
+  }
+
+  // Redemarrages en boucle : alerte meme si le portail repond en ce moment.
+  const nbRedem = resultats.meta?.redemarrages15min;
+  if (typeof nbRedem === 'number') {
+    if (nbRedem > REDEMARRAGES_MAX && !etat.redemarrages?.alerte) {
+      await texto(`Sentro : ${nbRedem} redémarrages du portail en 15 min à ${heureQuebec(maintenant)}.`);
+      etat.redemarrages = { alerte: true, depuis: iso };
+    } else if (nbRedem <= REDEMARRAGES_MAX && etat.redemarrages?.alerte) {
+      etat.redemarrages = { alerte: false, depuis: iso };
     }
   }
 
@@ -321,6 +424,12 @@ async function publierIncidents(maintenant = new Date()) {
     commentaires,
   };
   await writeFile(join(DOSSIER, 'incidents.json'), JSON.stringify(donnees));
+}
+
+if (import.meta.url === `file://${process.argv[1]}` && process.env.TEST === '1') {
+  // Mode test (workflow_dispatch, test=1) : un texto pour verifier les secrets Twilio, rien d'autre.
+  const ok = await texto(`Sentro : texto de test de la vérification, ${heureQuebec(new Date())}.`);
+  process.exit(ok ? 0 : 1);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

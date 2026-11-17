@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      test:
+        description: 'test=1 : envoie seulement un texto de test (secrets Twilio)'
+        required: false
+        default: '0'
 
 permissions:
   actions: write
@@ -40,9 +45,12 @@ jobs:
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
           TWILIO_FROM: ${{ secrets.TWILIO_FROM }}
           ALERTE_TEL: ${{ secrets.ALERTE_TEL }}
+          STATUT_VU_SECRET: ${{ secrets.STATUT_VU_SECRET }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST: ${{ github.event.inputs.test || '0' }}
 
       - name: Publier les données
+        if: github.event.inputs.test != '1'
         env:
           GIT_AUTHOR_NAME: Sentro Status
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
