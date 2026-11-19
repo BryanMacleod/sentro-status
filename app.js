@@ -4,7 +4,6 @@ const CONTENU = `https://api.github.com/repos/${DEPOT}/contents`;
 const JOURS = 90;
 const FUSEAU = 'America/Toronto';
 // Perturbation minimale (minutes) pour colorer une journee en jaune.
-const PERTURBATION_MIN = 15;
 
 // Noms et textes : langue.js (un seul dictionnaire, francais et anglais).
 const COMPOSANTS = Object.keys(SentroLangue.COMPOSANTS);
@@ -95,14 +94,12 @@ function etatJour(c, { panneMin = 0, minutesJour = 1440, ancien = false } = {}) 
     : { classe: '', dispo: null, panneMin: 0, maintenanceMin: 0 };
   if (ancien) panneMin = (c.panne ?? 0) * 5;
   const ratio = ancien ? (c.panne ?? 0) / total : Math.min(1, panneMin / Math.max(1, minutesJour));
-  // Une verification lente isolee (5 min « perturbe ») ne colore plus la
-  // journee : le jaune demande de la panne (dispo sous 100 %) ou au moins
-  // 15 min de perturbation, sinon la barre jaune contredisait le 100 %.
-  const perturbeMin = (c.degrade ?? 0) * 5;
+  // Le jaune demande de la vraie panne : une lenteur (« perturbe ») ne colore
+  // jamais la journee, c'est un faux positif (consigne de Gabriel, 19 nov.).
   const classe = ratio >= 0.05 ? 'panne'
-    : panneMin > 0 || perturbeMin >= PERTURBATION_MIN ? 'degrade'
+    : panneMin > 0 ? 'degrade'
     : (c.maintenance ?? 0) > 0 ? 'maintenance' : 'operationnel';
-  return { classe, dispo: 1 - ratio, panneMin: Math.round(panneMin), maintenanceMin: (c.maintenance ?? 0) * 5, perturbeMin: perturbeMin >= PERTURBATION_MIN ? perturbeMin : 0 };
+  return { classe, dispo: 1 - ratio, panneMin: Math.round(panneMin), maintenanceMin: (c.maintenance ?? 0) * 5 };
 }
 
 async function lireDonnee(nom) {
@@ -155,7 +152,7 @@ function afficherServices(etat, historique) {
       }
       const info = e.dispo === null
         ? `${dateLisible(j)} · ${e.maintenanceMin ? T.maintenanceSeule(e.maintenanceMin) : premier && j < premier ? T.pasSurveille : T.aucuneDonnee}`
-        : [dateLisible(j), T.disponible(pourcent(e.dispo)), e.panneMin && T.panneMin(e.panneMin), e.perturbeMin && T.perturbeMin(e.perturbeMin), e.maintenanceMin && T.maintenanceMin(e.maintenanceMin)]
+        : [dateLisible(j), T.disponible(pourcent(e.dispo)), e.panneMin && T.panneMin(e.panneMin), e.maintenanceMin && T.maintenanceMin(e.maintenanceMin)]
           .filter(Boolean).join(' · ');
       return `<span class="barre${e.classe ? ` barre--${e.classe}` : ''}${recent ? '' : ' barre--ancienne'}" tabindex="0" data-info="${echapper(info)}"></span>`;
     }).join('');

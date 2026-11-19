@@ -91,7 +91,7 @@ async function verifierExterne() {
   const connexion = await appeler('/api/auth/csrf', { json: true });
   const connexionOk = connexion.ok && connexion.corps?.csrfToken;
   return {
-    portail: { statut: !portail.ok ? 'panne' : portail.latenceMs > 5000 ? 'degrade' : 'operationnel', latenceMs: portail.latenceMs, cause: cause(portail) },
+    portail: { statut: !portail.ok ? 'panne' : 'operationnel', latenceMs: portail.latenceMs, cause: cause(portail) },
     connexion: { statut: connexionOk ? 'operationnel' : 'panne', cause: connexionOk ? null : (cause(connexion) ?? 'jeton absent') },
   };
 }
