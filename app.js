@@ -228,7 +228,7 @@ async function chargerIncidents() {
   const fermes = issues.filter(i => i.state === 'closed' && genre(i) === 'incident' && new Date(i.closed_at).getTime() > visibles && !INCIDENTS_FUSIONNES.has(i.number));
   // Mise a jour publiee sur un incident ferme (explication, correctifs) :
   // affichee en haut de la page pendant 7 jours apres sa publication.
-  const aSuivre = fermes.filter(i => i.comments > 0 && new Date(i.updated_at).getTime() > Date.now() - SEPT_JOURS);
+  const aSuivre = fermes.filter(i => i.comments > 0 && new Date(i.updated_at).getTime() > Date.now() - SEPT_JOURS && !EPINGLES_RETIRES.has(i.number));
   const [suivisOuverts, suivisFermes] = await Promise.all([Promise.all(ouverts.map(avecSuivis)), Promise.all(aSuivre.map(avecSuivis))]);
   const champs = (i, suivis) => ({ numero: i.number, genre: genre(i), titre: i.title, texte: (TEXTE_CORRIGE[i.number] ?? (t => t))(i.body ?? ''), creeA: DEBUT_CORRIGE[i.number] ?? i.created_at, fermeA: i.closed_at, nbSuivis: i.comments ?? 0,
     suivis: suivis.map(c => ({ a: c.created_at, texte: texteCommentaire(c) })) });
@@ -307,6 +307,9 @@ async function afficherIncidents() {
 // (retire du haut de la page et des incidents recents), qui commence a
 // 15 h 00 (premier echec) et dure 24 min.
 const INCIDENTS_FUSIONNES = new Set([18]);
+// Mises a jour retirees du haut de la page avant la fin de leurs 7 jours
+// (l'incident reste dans « Incidents recents »).
+const EPINGLES_RETIRES = new Set([19]);
 // Version anglaise du message d'explication publie en francais sur le #19
 // (commentaire du 2026-11-13T15:14:08Z), avec la duree corrigee (24 minutes).
 const EXPLICATION_12_NOVEMBRE_EN = `Explanation and corrective measures
