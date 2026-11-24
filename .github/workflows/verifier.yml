@@ -1,0 +1,62 @@
+name: Vérification
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+
+concurrency:
+  group: verification
+  cancel-in-progress: false
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Récupérer les données
+        run: |
+          mkdir -p donnees
+          if git fetch -q --depth=1 origin donnees 2>/dev/null; then
+            GIT_INDEX_FILE="$RUNNER_TEMP/index-lecture" git --work-tree=donnees checkout FETCH_HEAD -- .
+          fi
+
+      - name: Vérifier Sentro
+        run: node verifier/verifier.mjs
+        env:
+          SENTRO_URL: ${{ secrets.SENTRO_URL }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM: ${{ secrets.TWILIO_FROM }}
+          ALERTE_TEL: ${{ secrets.ALERTE_TEL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publier les données
+        env:
+          GIT_AUTHOR_NAME: Sentro Status
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: Sentro Status
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          export GIT_INDEX_FILE="$RUNNER_TEMP/index-ecriture"
+          git --work-tree=donnees add -A
+          arbre=$(git write-tree)
+          commit=$(git commit-tree "$arbre" -m "Données de la page d'état")
+          git push -q -f origin "$commit:refs/heads/donnees"
+
+      - name: Garder la vérification active
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/verifier.yml/enable" || true
