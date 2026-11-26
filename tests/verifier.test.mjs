@@ -39,8 +39,11 @@ test('coupure enregistree du premier echec au premier succes', async () => {
   await vider();
   await executer(ok, new Date('2026-11-15T02:05:24Z'));
   await executer(panne, new Date('2026-11-15T02:10:51Z'));
-  assert.equal((await lire('etat.json')).composants.portail.premierEchec, '2026-11-15T02:10:51.000Z');
+  // Premier echec : pas encore confirme, la page ne le lit pas.
+  assert.equal((await lire('etat.json')).composants.portail.premierEchec, undefined);
   await executer(panne, new Date('2026-11-15T02:15:20Z'));
+  // Confirme a la 2e : la coupure part du premier echec.
+  assert.equal((await lire('etat.json')).composants.portail.premierEchec, '2026-11-15T02:10:51.000Z');
   await executer(ok, new Date('2026-11-15T02:20:23Z'));
   const h = await lire('historique.json');
   assert.deepEqual(h.coupures.portail, [['2026-11-15T02:10:51.000Z', '2026-11-15T02:20:23.000Z']]);
@@ -50,13 +53,47 @@ test('coupure enregistree du premier echec au premier succes', async () => {
   assert.equal(h.jours['2026-11-15'], undefined);
 });
 
-test('verification « inconnu » : ne ferme pas la coupure', async () => {
+test('verification « inconnu » : ne ferme pas la coupure et ne remet pas le compte a zero', async () => {
   await vider();
   const inconnu = Object.fromEntries(COMPOSANTS.map(c => [c.id, { statut: 'inconnu' }]));
   await executer(panne, new Date('2026-11-20T20:00:00Z'));
   await executer(inconnu, new Date('2026-11-20T20:05:00Z'));
-  await executer(ok, new Date('2026-11-20T20:10:00Z'));
-  assert.deepEqual((await lire('historique.json')).coupures.base, [['2026-11-20T20:00:00.000Z', '2026-11-20T20:10:00.000Z']]);
+  await executer(panne, new Date('2026-11-20T20:10:00Z'));
+  await executer(inconnu, new Date('2026-11-20T20:15:00Z'));
+  await executer(ok, new Date('2026-11-20T20:20:00Z'));
+  assert.deepEqual((await lire('historique.json')).coupures.base, [['2026-11-20T20:00:00.000Z', '2026-11-20T20:20:00.000Z']]);
+});
+
+test('une seule verification ratee : rien d\'affiche, aucune coupure, aucune alerte', async () => {
+  await vider();
+  await executer(ok, new Date('2026-11-25T01:45:00Z'));
+  await executer(panne, new Date('2026-11-25T01:50:00Z'));
+  const e = await lire('etat.json');
+  assert.equal(e.global, 'operationnel');
+  assert.equal(e.composants.portail.statut, 'operationnel');
+  assert.equal(e.composants.portail.alerte, false);
+  assert.equal(e.composants.portail.premierEchec, undefined);
+  assert.equal(e.composants.portail.echecNonConfirme, '2026-11-25T01:50:00.000Z');
+  assert.equal(e.incident, null);
+  await executer(ok, new Date('2026-11-25T01:55:00Z'));
+  const h = await lire('historique.json');
+  assert.equal(h.coupures?.portail, undefined);
+  const jour = h.jours['2026-11-24'].portail;
+  assert.equal(jour.panne, 0);
+  assert.equal((await lire('etat.json')).composants.portail.echecNonConfirme, undefined);
+});
+
+test('deux verifications ratees de suite : panne affichee et alerte', async () => {
+  await vider();
+  await executer(ok, new Date('2026-11-25T01:45:00Z'));
+  await executer(panne, new Date('2026-11-25T01:50:00Z'));
+  await executer(panne, new Date('2026-11-25T01:55:00Z'));
+  const e = await lire('etat.json');
+  assert.equal(e.global, 'panne');
+  assert.equal(e.composants.portail.statut, 'panne');
+  assert.equal(e.composants.portail.alerte, true);
+  assert.equal(e.composants.portail.premierEchec, '2026-11-25T01:50:00.000Z');
+  assert.equal(e.composants.portail.depuis, '2026-11-25T01:55:00.000Z');
 });
 
 test('reprise des coupures mesurees du 12 novembre : ajoutees une seule fois si la journee existe', async () => {

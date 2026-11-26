@@ -33,6 +33,7 @@ Sans séparateur, le texte s'affiche tel quel dans les deux langues. Les message
 
 ## Alertes
 
+- Une panne est confirmée après 2 vérifications ratées de suite (10 minutes). Une seule vérification ratée n'est pas affichée sur la page ; elle est seulement notée dans le journal de la vérification.
 - Panne confirmée : texto avec un lien « J'ai vu » (ou répondre `VU`). Sans « vu » : rappel aux 5 minutes, 12 textos au plus par panne ; après 15 minutes, appel vocal, 3 au plus.
 - Plus de 3 redémarrages du portail en 15 minutes : texto, même si le portail répond.
 - Essai des secrets Twilio : Actions › Vérification › Run workflow, `test` = `1` (un texto, rien d'autre).

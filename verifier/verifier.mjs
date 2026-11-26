@@ -261,32 +261,51 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
 
   const enPanne = [];
   const retablis = [];
+  const brutParId = {};
   for (const { id } of COMPOSANTS) {
     const brut = resultats[id] ?? { statut: 'inconnu' };
     const r = maintenance && (brut.statut === 'panne' || brut.statut === 'degrade') ? { ...brut, statut: 'maintenance' } : brut;
     const avant = etat.composants[id] ?? { statut: 'inconnu', depuis: iso, pannesConsecutives: 0, alerte: false };
-    const pannes = r.statut === 'panne' ? (avant.pannesConsecutives ?? 0) + 1 : 0;
+    // « inconnu » ne compte pas et ne remet pas le compte a zero.
+    const pannes = r.statut === 'panne' ? (avant.pannesConsecutives ?? 0) + 1 : r.statut === 'inconnu' ? (avant.pannesConsecutives ?? 0) : 0;
     const seuil = SEUIL_ALERTE[id] ?? SEUIL_DEFAUT;
+    // Panne confirmee seulement apres `seuil` verifications ratees de suite
+    // (2, soit 10 min) : un echec isole (pare-feu qui refuse un instant l'IP
+    // du runner) n'est ni affiche, ni compte, ni signale ; il est seulement
+    // note dans le journal de la verification.
+    const confirmee = r.statut === 'panne' && pannes >= seuil;
+    const nonConfirmee = r.statut === 'panne' && !confirmee;
+    if (nonConfirmee) console.log(`Échec non confirmé (${pannes}/${seuil}) : ${id}${r.cause ? ` (${r.cause})` : ''}, non affiché`);
     let alerte = avant.alerte ?? false;
-    if (!alerte && pannes >= seuil) { alerte = true; enPanne.push(id); }
+    if (!alerte && confirmee) { alerte = true; enPanne.push(id); }
     if (alerte && r.statut !== 'panne' && r.statut !== 'inconnu' && r.statut !== 'maintenance') { alerte = false; retablis.push(id); }
     // Coupure : du premier echec au premier succes qui suit (lue par la page,
-    // voir calcul.js). « inconnu » ne l'ouvre ni ne la ferme ; une maintenance
-    // la ferme.
+    // voir calcul.js), seulement si la panne a ete confirmee. Avant la
+    // confirmation, le premier echec est garde a part (echecNonConfirme) et
+    // la page ne le lit pas. « inconnu » ne l'ouvre ni ne la ferme ; une
+    // maintenance la ferme.
+    let echecNonConfirme = avant.echecNonConfirme ?? null;
     let premierEchec = avant.premierEchec ?? null;
-    if (r.statut === 'panne') premierEchec ??= iso;
-    else if (premierEchec && r.statut !== 'inconnu') {
-      ajouterCoupure(historique, id, premierEchec, iso);
+    if (nonConfirmee) echecNonConfirme ??= iso;
+    else if (confirmee) { premierEchec ??= echecNonConfirme ?? iso; echecNonConfirme = null; }
+    else if (r.statut !== 'inconnu') {
+      if (premierEchec) ajouterCoupure(historique, id, premierEchec, iso);
+      else if (echecNonConfirme) console.log(`Échec isolé oublié : ${id} (${echecNonConfirme})`);
       premierEchec = null;
+      echecNonConfirme = null;
     }
+    // Statut affiche : l'echec non confirme garde le statut d'avant.
+    const affiche = nonConfirmee ? (avant.statut === 'panne' ? 'inconnu' : avant.statut ?? 'inconnu') : r.statut;
     etat.composants[id] = {
-      statut: r.statut,
-      depuis: r.statut === avant.statut ? avant.depuis : iso,
+      statut: affiche,
+      depuis: affiche === avant.statut ? avant.depuis : iso,
       pannesConsecutives: pannes,
       alerte,
       ...(premierEchec ? { premierEchec } : {}),
+      ...(echecNonConfirme ? { echecNonConfirme } : {}),
       ...(r.latenceMs != null ? { latenceMs: r.latenceMs } : {}),
     };
+    brutParId[id] = r.statut;
   }
   const statuts = Object.values(etat.composants).map(c => c.statut);
   etat.global = statuts.includes('panne') ? 'panne' : statuts.includes('maintenance') ? 'maintenance' : statuts.includes('degrade') ? 'degrade' : 'operationnel';
@@ -296,7 +315,8 @@ export async function executer(resultats, maintenant = new Date(), { maintenance
   historique.jours[jour] ??= {};
   for (const { id } of COMPOSANTS) {
     const c = (historique.jours[jour][id] ??= { operationnel: 0, degrade: 0, panne: 0, inconnu: 0 });
-    const { statut, pannesConsecutives } = etat.composants[id];
+    const { pannesConsecutives } = etat.composants[id];
+    const statut = brutParId[id];
     if (statut === 'panne' && pannesConsecutives < SEUIL_DEFAUT) {
       // Panne vue une seule fois : neutre tant qu'elle n'est pas confirmee.
       c.inconnu = (c.inconnu ?? 0) + 1;
