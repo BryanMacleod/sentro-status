@@ -1,0 +1,63 @@
+{
+ "composants": {
+  "portail": {
+   "statut": "operationnel",
+   "depuis": "2026-11-26T01:55:18.924Z",
+   "pannesConsecutives": 0,
+   "alerte": false,
+   "latenceMs": 570
+  },
+  "connexion": {
+   "statut": "operationnel",
+   "depuis": "2026-11-26T01:55:18.924Z",
+   "pannesConsecutives": 0,
+   "alerte": false
+  },
+  "base": {
+   "statut": "operationnel",
+   "depuis": "2026-11-26T01:55:18.924Z",
+   "pannesConsecutives": 0,
+   "alerte": false,
+   "latenceMs": 6
+  },
+  "courriels": {
+   "statut": "operationnel",
+   "depuis": "2026-11-26T01:55:18.924Z",
+   "pannesConsecutives": 0,
+   "alerte": false
+  },
+  "notifications": {
+   "statut": "operationnel",
+   "depuis": "2026-11-26T01:55:18.924Z",
+   "pannesConsecutives": 0,
+   "alerte": false
+  },
+  "stockage": {
+   "statut": "operationnel",
+   "depuis": "2026-11-26T01:55:18.924Z",
+   "pannesConsecutives": 0,
+   "alerte": false
+  },
+  "sauvegardes": {
+   "statut": "operationnel",
+   "depuis": "2026-11-26T01:55:18.924Z",
+   "pannesConsecutives": 0,
+   "alerte": false
+  },
+  "taches": {
+   "statut": "operationnel",
+   "depuis": "2026-11-26T01:55:18.924Z",
+   "pannesConsecutives": 0,
+   "alerte": false
+  },
+  "restauration": {
+   "statut": "operationnel",
+   "depuis": "2026-11-26T01:55:18.924Z",
+   "pannesConsecutives": 0,
+   "alerte": false
+  }
+ },
+ "incident": null,
+ "global": "operationnel",
+ "verifieA": "2026-11-28T13:45:23.012Z"
+}
